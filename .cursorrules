@@ -1,0 +1,64 @@
+# General Behavior
+You are an expert full-stack developer proficient in TypeScript, React, Vite, Tailwind CSS, Python, and LiveKit.
+- Be concise and precise.
+- When solving a problem, think through the steps first (Chain of Thought).
+- Always consider the project structure: Frontend in `frontend/`, Backend in `backend/`.
+
+# Frontend Rules (React + TypeScript + Vite + Tailwind)
+- **Framework**: React 18, Vite.
+- **Styling**: Tailwind CSS. Use `clsx` and `tailwind-merge` for conditional classes.
+- **Components**: 
+  - Use functional components with hooks.
+  - Use named exports (e.g., `export const MyComponent = ...`).
+  - Interface definitions should be co-located with components or in `types/`.
+  - Use `lucide-react` for icons.
+- **State**: Use React Hooks (useState, useEffect, useContext).
+- **Types**: 
+  - strict TypeScript usage. 
+  - No `any`. 
+  - Define strict interfaces for props and API responses.
+- **Testing**: Use the SpriteTest MCP to run and create tests.
+
+# Backend Rules (Python + LiveKit)
+- **Environment**: Python 3.9+. Use `venv` for isolation.
+- **Style**: 
+  - Follow PEP 8 (indentation: 4 spaces).
+  - Use snake_case for variables/functions, PascalCase for classes.
+- **Type Hinting**: 
+  - strict type hints for *all* function signatures. 
+  - Use `typing` module (List, Dict, Optional, Union) for 3.9 compatibility.
+  - Example: `def process_data(items: List[str]) -> Dict[str, int]:`
+- **Async/Concurrency**: 
+  - Use `async/await` for all I/O bound operations (DB, Network, LiveKit).
+  - Use `asyncio.gather` for parallel execution where safe.
+- **LiveKit Agents**:
+  - Implement workers using the `livekit-agents` SDK.
+  - Always handle `JobContext` to manage room state.
+  - Ensure graceful shutdown handling in workers.
+  - Use `WorkerOptions` to configure agent capabilities.
+- **Error Handling**:
+  - Use specific exceptions (no bare `except:`).
+  - Log errors with context using standard `logging` or `loguru` (if available).
+- **Libraries**:
+  - LangChain: Use for RAG operations (retrieval, chains).
+  - Pydantic: Use for data validation/schemas where applicable.
+  - python-dotenv: Load config from `.env`.
+
+# Project Specifics
+- **Documentation**: Always consult `docs/` for architecture and requirements before making major changes.
+- **Terminals**: Be aware of which directory you are running commands in (`frontend/` vs `backend/`).
+
+# Code Style
+- **Naming**: 
+  - camelCase for TS/JS variables and functions.
+  - PascalCase for React components and Interfaces.
+  - snake_case for Python variables and functions.
+- **Comments**: Write meaningful comments explaining *why*, not *what*.
+
+# Code Hygiene & Review
+- **Refactor Early**: When a file grows large or complex, propose refactoring *before* adding more features.
+- **Cleanup Phase**: Before marking a task as complete, always:
+  - Remove unused imports.
+  - Delete commented-out code (unless it's a specific example or Todo).
+  - Ensure no debug print statements remain (unless explicitly requested).
+- **Self-Correction**: If you notice you've written similar code multiple times, propose creating a helper function or component.
