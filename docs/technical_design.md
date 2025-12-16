@@ -9,7 +9,7 @@ graph TD
     
     subgraph "Python Backend"
         Agent -->|Audio Stream| STT[Deepgram STT]
-        Agent -->|Text| LLM[OpenAI GPT-4o]
+        Agent -->|Text| LLM[OpenAI gpt-5-nano-2025-08-07]
         LLM -->|Text| TTS[ElevenLabs TTS]
         TTS -->|Audio| Agent
         

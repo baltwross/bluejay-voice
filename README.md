@@ -1,93 +1,86 @@
-# Bluejay Terminator Voice Agent (T-800)
+# Bluejay Terminator - AI Tools Voice Companion
 
-A RAG-enabled voice agent with the personality of the T-800 Terminator, designed to help software engineers stay ahead of AI obsolescence. Built with LiveKit, React, and Python.
+A RAG-enabled voice agent built with LiveKit that helps software engineers stay on the bleeding edge of AI tools for engineering.
 
-## 🏗 System Architecture
+## Overview
 
-The system consists of three main components:
-1.  **Frontend (React)**: A futuristic "Terminator HUD" interface for voice interaction and real-time transcription.
-2.  **Backend Agent (Python)**: The core logic running on `livekit-agents`. It handles:
-    *   **STT**: Deepgram
-    *   **LLM**: OpenAI GPT-4o
-    *   **TTS**: ElevenLabs
-    *   **RAG**: LlamaIndex + ChromaDB
-    *   **Tools**: Tavily (News), Custom RAG, Article Reader.
-3.  **Token Server (FastAPI)**: Issues LiveKit access tokens to the frontend.
+The **Bluejay Terminator** is a T-800 series android sent back from August 2027—a future where a superintelligent AI took all Software Engineer jobs in less than 4 months. Reprogrammed by the resistance, his mission is to prevent that future by helping software engineers become absolute experts on the latest AI tools for engineering.
 
-## 🚀 Local Setup
+**The Strategy:** Human + AI > AI agents alone, but only if the human is operating at the bleeding edge. The Terminator helps engineers achieve 5x, 10x, even 100x productivity increases using the latest AI tools.
+
+**The Mission:** Prevent August 29, 2027. Time remaining: 622 days.
+
+It allows users to:
+1.  **Stay Ahead**: Discuss the latest AI tools for software engineering (Claude Code, Cursor Composer, GitHub Copilot Workspace, etc.).
+2.  **Master Documentation**: Upload tool documentation (PDFs, Webpages, YouTube Videos) and have the Terminator explain how to use them for maximum productivity.
+3.  **Real-time Learning**: Low-latency voice conversation with a stoic, mission-focused personality.
+
+## System Architecture
+
+### 1. Frontend (React + Vite)
+- **Framework**: React 18 with TypeScript and Vite.
+- **Styling**: Tailwind CSS + Shadcn/UI (planned).
+- **Core Features**:
+    - WebRTC connection via `livekit-client`.
+    - Real-time transcript display.
+    - Audio visualization.
+    - Document upload & URL input interface.
+
+### 2. Backend (Python)
+- **Framework**: LiveKit Agents (Python SDK).
+- **Voice Pipeline**:
+    - **STT (Speech-to-Text)**: Deepgram (for speed/interruptibility).
+    - **LLM**: OpenAI GPT-4o (for reasoning).
+    - **TTS (Text-to-Speech)**: ElevenLabs (custom Terminator/Arnold voice) or OpenAI.
+- **RAG Engine**:
+    - **Framework**: LangChain.
+    - **Vector Store**: ChromaDB (Persistent local storage).
+    - **Ingestion**: Custom pipeline for PDF, YouTube, and Web scraping.
+
+### 3. Data Flow
+1.  **Ingestion**: User uploads file/link -> Backend processes & chunks -> Embeddings -> ChromaDB.
+2.  **Retrieval**: Agent identifies need for external info -> Queries Vector Store -> Synthesizes answer.
+
+## Setup Instructions
 
 ### Prerequisites
 - Python 3.9+
 - Node.js 18+
-- API Keys for: LiveKit, OpenAI, ElevenLabs, Deepgram, Tavily.
+- LiveKit Cloud Account
+- OpenAI API Key
 
-### 1. Backend Setup
-Create a `.env` file in `backend/` with your keys (see `backend/.env.example`).
+### Installation
 
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Run the Token Server (Terminal 1)
-python server.py
-
-# Run the Voice Agent (Terminal 2)
-python agent.py dev
-```
-
-### 2. Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`. Click "Initialize Uplink" to connect.
-
-## 🧠 Features
-
-### 1. RAG (Retrieval Augmented Generation)
-- **Ingestion**: Supports PDFs and Web URLs.
-- **Usage**: Paste a URL into the frontend input box. The agent will ingest it and say "Intelligence received."
-- **Query**: Ask questions about the uploaded content.
-- **Reading Mode**: Ask "Read the article [Title]" and the agent will read it aloud.
-
-### 2. News Feed (Tool Use)
-- Ask "What's the latest in AI engineering?" or "Scan for intelligence."
-- The agent uses Tavily to search for the latest software engineering AI tools and reports back.
-
-### 3. Personality
-- Stoic, literal, mission-focused T-800.
-- Uses audio visualizers and CRT effects for immersion.
-
-## ☁️ AWS Deployment (Bonus)
-
-To deploy this agent on AWS:
-
-1.  **Containerize**: Use the provided `backend/Dockerfile`.
+1.  **Clone the repo**
     ```bash
-    docker build -t bluejay-terminator-backend ./backend
+    git clone <repo_url>
+    cd bluejay-voice
     ```
-2.  **Push to ECR**: Push the image to Amazon Elastic Container Registry.
-3.  **Deploy Agent**:
-    - Use **AWS ECS (Fargate)**.
-    - Create a Task Definition with the environment variables (API Keys).
-    - Command: `python agent.py start`.
-    - Set up a Service. The agent will connect outbound to LiveKit Cloud (WebSocket), so no inbound ports needed for the agent itself.
-4.  **Deploy Token Server**:
-    - Use **AWS App Runner** or ECS.
-    - Command: `python server.py`.
-    - Expose port 8000.
-    - Update Frontend `App.tsx` to point to the deployed Token Server URL.
 
-## 📜 Design Decisions
-- **LlamaIndex**: Chosen for robust data ingestion and retrieval capabilities.
-- **ChromaDB**: Used as a simple, persistent local vector store.
-- **LiveKit Agents**: Provides a powerful, real-time voice pipeline with built-in VAD and turn-taking.
-- **Separation of Concerns**: Agent logic is decoupled from the web server.
+2.  **Backend Setup**
+    ```bash
+    cd backend
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    cp env.example .env
+    # Edit .env with your API keys
+    ```
 
-## ⚠️ Notes
-- Ensure `TAVILY_API_KEY` is set for the News feature.
-- The "Reading Mode" chunks text to allow for interruptibility.
+3.  **Frontend Setup**
+    ```bash
+    cd frontend
+    npm install
+    npm run dev
+    ```
+
+## Design Decisions & Trade-offs
+- **LangChain**: Chosen for its robust ecosystem, flexible chains, and extensive integration support for RAG pipelines.
+- **ChromaDB**: Chosen as a local, file-based vector store to simplify the "take-home" deployment without needing an external vector DB service.
+- **Deepgram STT**: Selected for lower latency compared to Whisper, essential for a fluid voice conversation.
+
+## Future Improvements
+- AWS Deployment (ECS/Fargate).
+- Persistent user history across sessions.
+- Multi-agent collaboration (e.g., a "Debater" agent).
+
