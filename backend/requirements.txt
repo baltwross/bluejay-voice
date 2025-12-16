@@ -1,0 +1,15 @@
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-deepgram
+livekit-plugins-elevenlabs
+livekit-plugins-silero
+python-dotenv
+llama-index
+llama-index-vector-stores-chroma
+chromadb
+pymupdf
+youtube-transcript-api
+trafilatura
+beautifulsoup4
+python-docx
+

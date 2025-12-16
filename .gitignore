@@ -141,3 +141,128 @@ Temporary Items
 bluejay-loom-video-transcript.pdf
 docs/Bluejay Take Home Interview.pdf
 
+
+# Backend
+backend/venv
+backend/__pycache__
+backend/.env
+backend/env.example
+backend/*.egg-info
+
+# Frontend
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.local
+
+# Data & Database
+data/
+chroma_db/
+.DS_Store
+
+############################
+# OS / Editor
+############################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+############################
+# Python
+############################
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+.pyre/
+.pytype/
+
+# Logs
+*.log
+
+############################
+# Python environment files
+############################
+.env
+.env.*
+!.env.example
+
+############################
+# Node / React
+############################
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+out/
+
+# Next.js / Vite / CRA
+.next/
+.vite/
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+############################
+# Frontend environment files
+############################
+.env
+.env.*
+!.env.example
+
+############################
+# Tooling
+############################
+# ESLint / Prettier caches
+.eslintcache
+
+# Storybook
+storybook-static/
+
+############################
+# Misc
+############################
+# Local databases
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+venv/bin/coloredlogs
