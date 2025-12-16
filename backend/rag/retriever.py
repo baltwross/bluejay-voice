@@ -204,7 +204,8 @@ class DocumentRetriever:
             title_query: Partial title to search for
             
         Returns:
-            Document metadata if found, None otherwise
+            Document metadata if found, None otherwise.
+            Includes total_chunks count for reading mode.
         """
         try:
             collection = self.vector_store._collection
@@ -216,28 +217,43 @@ class DocumentRetriever:
             best_match = None
             best_score = 0
             
-            seen_docs = set()
+            # Track chunks per document
+            doc_chunks: Dict[str, int] = {}
+            doc_metadata: Dict[str, Dict[str, Any]] = {}
+            
             for metadata in results.get("metadatas", []):
                 if metadata:
                     doc_id = metadata.get("document_id")
-                    if doc_id and doc_id not in seen_docs:
-                        seen_docs.add(doc_id)
-                        doc_title = metadata.get("title", "").lower()
+                    if doc_id:
+                        # Count chunks per document
+                        doc_chunks[doc_id] = doc_chunks.get(doc_id, 0) + 1
                         
-                        # Simple substring matching score
-                        if title_query_lower in doc_title:
-                            score = len(title_query_lower) / len(doc_title) if doc_title else 0
-                            if score > best_score:
-                                best_score = score
-                                best_match = {
-                                    "document_id": doc_id,
-                                    "title": metadata.get("title"),
-                                    "source_type": metadata.get("source_type"),
-                                    "source_url": metadata.get("source_url"),
-                                }
+                        # Store first metadata entry for each document
+                        if doc_id not in doc_metadata:
+                            doc_metadata[doc_id] = metadata
+            
+            # Find best title match
+            for doc_id, metadata in doc_metadata.items():
+                doc_title = metadata.get("title", "").lower()
+                
+                # Simple substring matching score
+                if title_query_lower in doc_title:
+                    score = len(title_query_lower) / len(doc_title) if doc_title else 0
+                    if score > best_score:
+                        best_score = score
+                        best_match = {
+                            "document_id": doc_id,
+                            "title": metadata.get("title"),
+                            "source_type": metadata.get("source_type"),
+                            "source_url": metadata.get("source_url"),
+                            "total_chunks": doc_chunks.get(doc_id, 0),
+                        }
             
             if best_match:
-                logger.info(f"Found document '{best_match['title']}' for query '{title_query}'")
+                logger.info(
+                    f"Found document '{best_match['title']}' for query '{title_query}' "
+                    f"({best_match['total_chunks']} chunks)"
+                )
             else:
                 logger.info(f"No document found for query '{title_query}'")
                 
@@ -308,6 +324,45 @@ class DocumentRetriever:
                 })
         
         return sources
+    
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """
+        List all documents available in the knowledge base.
+        
+        Returns:
+            List of document metadata dicts with document_id, title, source_type, total_chunks.
+        """
+        try:
+            collection = self.vector_store._collection
+            results = collection.get(include=["metadatas"])
+            
+            # Aggregate chunks per document
+            doc_chunks: Dict[str, int] = {}
+            doc_metadata: Dict[str, Dict[str, Any]] = {}
+            
+            for metadata in results.get("metadatas", []):
+                if metadata:
+                    doc_id = metadata.get("document_id")
+                    if doc_id:
+                        doc_chunks[doc_id] = doc_chunks.get(doc_id, 0) + 1
+                        if doc_id not in doc_metadata:
+                            doc_metadata[doc_id] = metadata
+            
+            documents = []
+            for doc_id, metadata in doc_metadata.items():
+                documents.append({
+                    "document_id": doc_id,
+                    "title": metadata.get("title", "Unknown"),
+                    "source_type": metadata.get("source_type", "unknown"),
+                    "total_chunks": doc_chunks.get(doc_id, 0),
+                })
+            
+            logger.info(f"Listed {len(documents)} documents in knowledge base")
+            return documents
+            
+        except Exception as e:
+            logger.error(f"Error listing documents: {e}")
+            return []
     
     def as_retriever(self, **kwargs):
         """

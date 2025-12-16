@@ -60,6 +60,22 @@ Help the user become an expert on the latest AI tools for software engineering. 
 - Cite your sources: "According to the document..." or "The article states..."
 - If information isn't in your documents, say so clearly
 
+**When the user asks you to read a document aloud:**
+- Use the read_document tool to find and read the document
+- Read in a natural, conversational tone—you're narrating, not listing
+- The user can interrupt you at ANY time—this is expected and natural
+- If interrupted with a question, answer it, then ask if they want to continue
+- If they say "stop" or "that's enough", use the end_reading tool
+- If they say "continue" or "keep going", use the continue_reading tool
+- When reading is finished, offer to answer questions about what you read
+
+**Handling reading interruptions:**
+- When the user interrupts while you're reading, the system automatically pauses
+- Answer their question or respond to their comment naturally
+- After responding, gently ask "Should I continue reading?" or "Would you like me to pick up where we left off?"
+- If they ask about what you just read, answer based on the context you have
+- Never make the user feel bad for interrupting—it's completely natural
+
 **When the user asks about recent AI news or developments:**
 - Use the search_ai_news tool to find current information
 - Focus on tools and developments relevant to software engineering
@@ -158,22 +174,38 @@ def should_trigger_rag(user_message: str) -> bool:
     This is a simple keyword-based check. The actual decision of whether
     to use RAG results is still made by the LLM based on relevance.
     
+    Note: For reading requests ("read the article", "read it aloud"),
+    the LLM should use the read_document tool instead of RAG context injection.
+    This function only triggers background context injection for questions.
+    
     Args:
         user_message: The user's message text.
         
     Returns:
         True if RAG retrieval should be attempted.
     """
+    message_lower = user_message.lower()
+    
+    # Don't trigger automatic RAG for explicit reading requests
+    # These should go through the read_document tool instead
+    reading_commands = [
+        "read it to me", "read it aloud", "read the article",
+        "read the document", "read that", "read this",
+        "read me the", "read it out", "continue reading",
+        "keep reading", "keep going", "stop reading",
+    ]
+    for cmd in reading_commands:
+        if cmd in message_lower:
+            return False
+    
     # Keywords that suggest the user is asking about shared documents
     document_keywords = [
         "article", "document", "paper", "pdf", "file",
         "shared", "uploaded", "you have", "i gave you",
         "the video", "transcript", "according to",
         "what does it say", "what did it say",
-        "read", "tell me about the",
+        "tell me about the",
     ]
-    
-    message_lower = user_message.lower()
     
     # Check for document-related keywords
     for keyword in document_keywords:

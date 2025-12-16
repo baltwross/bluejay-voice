@@ -240,73 +240,106 @@ The **ReadingState** dataclass and all state management methods are **already im
 | `backend/config.py` | `ElevenLabsConfig.model_turbo` = `eleven_turbo_v2` for fast TTS |
 | `docs/product_requirements.md` | Section 3.1 has Article Reading Mode requirements |
 
-### How to Implement read_document Tool (Subtask 5.2)
+### read_document Tool Implementation (Subtask 5.2) — IMPLEMENTED ✅
+
+The `read_document` tool is fully implemented in `backend/agent.py`. Key features:
+- Finds documents by partial title match using `find_document_by_title()`
+- Retrieves chunks sequentially using `retrieve_for_reading()`
+- Initializes reading state with `start_reading()`
+- Returns first batch of chunks (3 at a time) for TTS narration
+- Provides progress information and user instructions
 
 ```python
 @function_tool()
-async def read_document(
-    self,
-    context: RunContext,
-    document_title: str,
-) -> str:
-    """Read a document aloud to the user.
-    
-    Args:
-        document_title: The title or partial title of the document to read.
-    """
-    # 1. Find the document
+async def read_document(self, context: RunContext, document_title: str) -> str:
+    """Read a document aloud to the user."""
     retriever = self._get_retriever()
     doc = retriever.find_document_by_title(document_title)
     
     if not doc:
-        return f"I couldn't find a document matching '{document_title}'."
+        available_docs = retriever.list_documents()
+        # Return helpful message with available documents
+        return f"I couldn't find '{document_title}'. Available: {titles}"
     
-    # 2. Get chunks for reading
     result = retriever.retrieve_for_reading(
         document_id=doc["document_id"],
         start_chunk=0,
-        num_chunks=5,  # Read 5 chunks at a time
+        num_chunks=3,  # 3 chunks at a time
     )
     
-    # 3. Initialize reading state
     self.start_reading(
         document_id=doc["document_id"],
         document_title=doc["title"],
-        total_chunks=len(result.documents),
+        total_chunks=doc.get("total_chunks", len(result.documents)),
     )
     
-    # 4. Return first chunk for TTS
-    # The agent will speak this, and you can implement
-    # continuation logic in on_user_turn_completed
-    return result.context
+    return f"Beginning to read '{doc['title']}':\n\n{result.context}"
 ```
 
-### How to Handle Interruptions (Subtask 5.3, 5.4)
+### How to Handle Interruptions (Subtask 5.3, 5.4) — IMPLEMENTED ✅
 
-LiveKit's VAD automatically stops TTS when user speaks. In `on_user_turn_completed`:
+LiveKit's VAD automatically stops TTS when user speaks. The `on_user_turn_completed` hook now handles reading mode interruptions:
 
 ```python
 async def on_user_turn_completed(self, turn_ctx, new_message):
     user_text = new_message.text_content.lower()
     
     # If reading and user interrupts
-    if self.is_reading:
+    if self._reading_state.is_reading:
         self.pause_reading()  # Save position
-        
-        # Check for control commands
-        if "stop" in user_text or "that's enough" in user_text:
-            self.stop_reading()
-            return  # Let LLM respond naturally
-        
-        if "continue" in user_text or "keep going" in user_text:
-            if self.reading_state.can_resume:
-                self.resume_reading()
-                # Get next chunks and continue reading...
+        # Inject context so LLM knows what's happening
+        turn_ctx.add_message(
+            role="assistant",
+            content=f"[Reading paused. {self.get_reading_status()}. "
+                    f"Respond to the user. Use continue_reading or end_reading tools.]"
+        )
+        return
+    
+    # If paused and user wants to continue
+    if self._reading_state.can_resume:
+        continue_keywords = ["continue", "keep going", "resume", ...]
+        if any(kw in user_text for kw in continue_keywords):
+            turn_ctx.add_message(
+                role="assistant",
+                content="[User wants to continue reading. Use continue_reading tool.]"
+            )
 ```
 
-### What to Defer (Subtask 5.5)
+### Available Reading Tools
 
-**Persistence is NOT needed for MVP.** ReadingState is in-memory only. If the agent restarts, reading state is lost — this is acceptable for the interview demo.
+| Tool | Purpose |
+|------|---------|
+| `read_document(document_title)` | Start reading a document by title |
+| `continue_reading()` | Continue from paused position |
+| `end_reading()` | Stop reading and reset state |
+| `list_available_documents()` | List all documents in knowledge base |
+
+### Reading Session Persistence (Subtask 5.5) — IMPLEMENTED ✅
+
+Reading state is now persisted to a JSON file (`backend/.reading_state.json`), enabling resume across agent restarts:
+
+**Persistence Features:**
+- State is saved automatically on: `start_reading()`, `update_reading_position()`, `pause_reading()`, `resume_reading()`
+- State file is cleaned up when `stop_reading()` is called
+- Sessions older than 24 hours are automatically expired and cleaned up
+- On agent startup, if a resumable session exists, the agent offers to continue
+
+**Storage Format:**
+```json
+{
+  "is_reading": false,
+  "is_paused": true,
+  "document_id": "abc123",
+  "document_title": "Claude Code Article",
+  "current_chunk": 5,
+  "total_chunks": 15,
+  "last_updated": "2025-12-16T06:30:00.000000"
+}
+```
+
+**New Tool: `check_reading_session()`**
+- Returns status of any resumable reading session
+- Useful when user asks "was I reading something?" or "can we continue?"
 
 ### Reference Documentation
 

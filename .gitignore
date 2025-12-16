@@ -27,6 +27,9 @@ data/documents/
 chroma_db/
 .env
 
+# Reading session state (persisted for resume across restarts)
+backend/.reading_state.json
+
 # --- OS / Editor ---
 .DS_Store
 .idea/
