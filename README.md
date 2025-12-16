@@ -19,27 +19,37 @@ It allows users to:
 
 ### 1. Frontend (React + Vite)
 - **Framework**: React 18 with TypeScript and Vite.
-- **Styling**: Tailwind CSS + Shadcn/UI (planned).
+- **Styling**: Tailwind CSS with custom Terminator HUD theme.
 - **Core Features**:
     - WebRTC connection via `livekit-client`.
     - Real-time transcript display.
     - Audio visualization.
     - Document upload & URL input interface.
+- **Deployment**: AWS S3 + CloudFront (static hosting).
 
 ### 2. Backend (Python)
 - **Framework**: LiveKit Agents (Python SDK).
 - **Voice Pipeline**:
     - **STT (Speech-to-Text)**: Deepgram (for speed/interruptibility).
-    - **LLM**: OpenAI gpt-5-nano-2025-08-07 (for reasoning).
-    - **TTS (Text-to-Speech)**: ElevenLabs (custom Terminator/Arnold voice) or OpenAI.
+    - **LLM**: OpenAI `gpt-5-nano-2025-08-07` (for reasoning).
+    - **TTS (Text-to-Speech)**: ElevenLabs (custom Arnold voice, Voice ID: `8DGMp3sPQNZOuCfSIxxE`).
+    - **VAD**: Silero (for natural interruption handling).
 - **RAG Engine**:
     - **Framework**: LangChain.
-    - **Vector Store**: ChromaDB (Persistent local storage).
+    - **Vector Store**: ChromaDB (persistent storage).
     - **Ingestion**: Custom pipeline for PDF, YouTube, and Web scraping.
+- **Deployment**: AWS App Runner or ECS Fargate (Dockerized).
 
-### 3. Data Flow
-1.  **Ingestion**: User uploads file/link -> Backend processes & chunks -> Embeddings -> ChromaDB.
-2.  **Retrieval**: Agent identifies need for external info -> Queries Vector Store -> Synthesizes answer.
+### 3. AWS Deployment Strategy
+- **Backend Agent**: Docker container on AWS App Runner or ECS Fargate
+- **Environment Variables**: AWS Secrets Manager
+- **Vector Store**: ChromaDB with persistent volume (EFS) or S3 backup
+- **Frontend**: S3 + CloudFront (static hosting)
+- **LiveKit**: LiveKit Cloud (external SaaS)
+
+### 4. Data Flow
+1.  **Ingestion**: User uploads file/link → Backend processes & chunks → Embeddings → ChromaDB.
+2.  **Retrieval**: Agent identifies need for external info → Queries Vector Store → Synthesizes answer.
 
 ## Setup Instructions
 
@@ -75,12 +85,39 @@ It allows users to:
     ```
 
 ## Design Decisions & Trade-offs
-- **LangChain**: Chosen for its robust ecosystem, flexible chains, and extensive integration support for RAG pipelines.
-- **ChromaDB**: Chosen as a local, file-based vector store to simplify the "take-home" deployment without needing an external vector DB service.
-- **Deepgram STT**: Selected for lower latency compared to Whisper, essential for a fluid voice conversation.
+
+### RAG Framework
+- **LangChain**: Chosen for its robust ecosystem, flexible chains, and extensive integration support for RAG pipelines. Provides excellent document loaders for PDF, YouTube, and web content.
+
+### Vector Store
+- **ChromaDB**: Local, file-based vector store for development. In production, uses persistent volumes (EFS) or S3 snapshots. Chosen for simplicity and no external database dependencies.
+
+### Voice Pipeline
+- **Deepgram STT**: Selected for lower latency (~300ms) compared to Whisper, essential for natural conversation flow.
+- **ElevenLabs TTS**: Custom Arnold Schwarzenegger voice (Voice ID: `8DGMp3sPQNZOuCfSIxxE`) for authentic T-800 personality.
+- **Silero VAD**: Enables natural interruption during agent speech - critical for reading mode.
+
+### AWS Deployment
+- **App Runner vs ECS Fargate**: App Runner chosen for simpler deployment and automatic scaling. ECS Fargate provides more control but requires VPC/ALB setup.
+- **Persistent Storage**: ChromaDB data stored on EFS mount or S3 with periodic snapshots.
+- **Secrets Management**: All API keys stored in AWS Secrets Manager, injected as environment variables.
+
+### Chunking Strategy
+- **Chunk Size**: 1000 tokens with 200 token overlap for optimal retrieval accuracy.
+- **Embedding Model**: `text-embedding-3-large` (OpenAI) - best quality embeddings, recommended by LangChain for RAG.
+
+## Local Development vs Production
+
+| Component | Local | Production (AWS) |
+|-----------|-------|------------------|
+| Backend Agent | `python agent.py dev` | Docker on App Runner/Fargate |
+| Frontend | `npm run dev` (localhost:5173) | S3 + CloudFront |
+| Vector DB | `./chroma_db/` directory | EFS mount or S3 |
+| Secrets | `.env` file | AWS Secrets Manager |
+| LiveKit | LiveKit Cloud | LiveKit Cloud |
 
 ## Future Improvements
-- AWS Deployment (ECS/Fargate).
-- Persistent user history across sessions.
-- Multi-agent collaboration (e.g., a "Debater" agent).
+- Persistent user conversation history across sessions.
+- Multi-document comparison queries.
+- Voice emotion detection for user frustration handling.
 

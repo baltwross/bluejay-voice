@@ -16,7 +16,7 @@ graph TD
         Agent -- Tool Call --> Tools
         
         subgraph "RAG Engine"
-            Tools -->|Query| RAG[LlamaIndex]
+            Tools -->|Query| RAG[LangChain + ChromaDB]
             RAG <-->|Embeddings| Chroma[ChromaDB]
             Ingest[Ingestion Pipeline] -->|Chunks| Chroma
         end
@@ -32,12 +32,46 @@ graph TD
 
 ### 2.1 Backend (Python Agent)
 *   **Framework:** `livekit-agents`
-*   **Entrypoint:** `agent.py` - defines the `VoicePipelineAgent`.
-*   **State Management:**
-    *   The agent needs to know if it's currently "discussing a document" or "chatting generally".
-    *   We will use the LLM's context window (chat history) to maintain this state implicitly.
+*   **Entrypoint:** `agent.py` - defines the `AgentSession` with voice pipeline.
+*   **Personality:** Defined in `prompts.py` as the system prompt.
 
-### 2.2 The Ingestion Pipeline (`backend/rag/`)
+### 2.2 Agent Architecture (LiveKit Conversational Flow)
+
+LiveKit's architecture naturally supports conversational flow without requiring explicit "modes" or complex orchestration like LangGraph. The LLM acts as the orchestrator:
+
+#### Separation of Concerns
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **System Prompt** | `prompts.py` | Static personality + behavior instructions |
+| **RAG Context** | `on_user_turn_completed` hook | Dynamic, injected per-turn based on user query |
+| **Tool Calls** | `@function_tool` decorators | LLM decides when to invoke external APIs |
+| **Chat History** | `ChatContext` | Managed by LiveKit automatically |
+
+#### RAG Integration Pattern
+Per [LiveKit External Data docs](https://docs.livekit.io/agents/build/external-data), RAG context is injected dynamically using the `on_user_turn_completed` hook:
+
+```python
+async def on_user_turn_completed(
+    self, turn_ctx: ChatContext, new_message: ChatMessage,
+) -> None:
+    # Perform RAG lookup based on user's message
+    rag_content = await my_rag_lookup(new_message.text_content())
+    # Inject as hidden assistant message before LLM generates response
+    turn_ctx.add_message(
+        role="assistant", 
+        content=f"Relevant information from documents: {rag_content}"
+    )
+```
+
+#### Decision Flow (No Explicit Modes)
+The LLM naturally decides based on the user's message:
+- **Document question** → RAG search triggered via `on_user_turn_completed`
+- **News/latest AI tools** → LLM invokes `search_ai_news` tool
+- **General chat** → Direct response from LLM knowledge
+
+This eliminates the need for mode switching or complex state machines.
+
+### 2.3 The Ingestion Pipeline (`backend/rag/`)
 This is a critical subsystem. It decouples *getting content* from *using content*.
 
 1.  **Input:** Raw File or URL.
@@ -48,15 +82,19 @@ This is a critical subsystem. It decouples *getting content* from *using content
     *   `DocxReader` (via `python-docx`) for Word documents.
 3.  **Transformation:**
     *   Clean text (remove headers/footers/timestamps).
-    *   Chunking: SentenceSplitter (chunk_size=1024, overlap=20).
-4.  **Embedding:** `OpenAIEmbedding` (text-embedding-3-small).
-5.  **Storage:** `ChromaVectorStore` (persisted to `./chroma_db`).
+    *   Chunking: RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200).
+4.  **Embedding:** `OpenAIEmbeddings` (text-embedding-3-large) - OpenAI's best embedding model, recommended by LangChain.
+5.  **Storage:** `Chroma` via LangChain (persisted to `./chroma_db`).
 
-### 2.3 The Voice Agent Configuration
+### 2.4 The Voice Agent Configuration
 *   **VAD (Voice Activity Detection):** `Silero VAD`. Essential for interruptibility.
 *   **Turn Detection:** Eager. If the user pauses for > 600ms, the agent takes the turn.
+*   **Voice Pipeline:**
+    *   **STT:** Deepgram (real-time transcription)
+    *   **LLM:** OpenAI `gpt-5-nano-2025-08-07`
+    *   **TTS:** ElevenLabs with Arnold-style voice (Voice ID: configurable)
 
-### 2.4 Frontend (React)
+### 2.5 Frontend (React)
 *   **Connection Management:** `useLiveKitRoom` hook.
 *   **State:**
     *   `isRecording`: boolean.
@@ -74,18 +112,44 @@ This is a critical subsystem. It decouples *getting content* from *using content
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `id` | UUID | Unique chunk ID |
-| `embedding` | Vector[1536] | The semantic vector |
+| `embedding` | Vector[3072] | The semantic vector (text-embedding-3-large default) |
 | `text` | String | The actual content chunk |
 | `metadata.source_type` | String | "pdf", "youtube", "web" |
 | `metadata.source_url` | String | Original link or filename |
 | `metadata.title` | String | Title of the content |
 | `metadata.timestamp` | Float | (Optional) For video transcripts |
 
-## 4. Security & Deployment (Take-Home Scope)
-*   **API Keys:** Stored in `.env` (local) / AWS Secrets Manager (prod).
-*   **Local Run:** `python agent.py dev` connects to LiveKit Cloud from localhost.
-*   **Production Deployment (AWS):**
-    *   **Strategy:** Dockerized application deployed to **AWS App Runner** or **ECS Fargate**.
-    *   **Benefit:** Provides a publicly accessible URL (no local install required for users).
-    *   **Persistence:** Local ChromaDB is ephemeral in containers. For this MVP, data resets on deployment (acceptable). Ideally would use persistent volume or S3.
+## 4. Security & Deployment
+
+### Local Development
+*   **API Keys:** Stored in `backend/.env` file (gitignored).
+*   **Run Command:** `python agent.py dev` connects to LiveKit Cloud from localhost.
+*   **Vector DB:** ChromaDB persisted to `./chroma_db` directory.
+
+### Production Deployment (AWS - REQUIRED)
+
+**⚠️ AWS deployment is REQUIRED for this take-home interview (bonus points).**
+
+#### Backend Agent
+*   **Container:** Docker image pushed to AWS ECR
+*   **Hosting:** AWS App Runner (recommended) or ECS Fargate
+*   **Configuration:**
+    *   CPU: 1 vCPU
+    *   Memory: 2GB RAM
+    *   Port: 8080
+*   **Secrets:** All API keys stored in **AWS Secrets Manager**, injected as environment variables
+*   **Persistence:** ChromaDB data stored on EFS mount or S3 snapshots
+
+#### Frontend
+*   **Hosting:** AWS S3 (static hosting) + CloudFront (CDN)
+*   **Build:** `npm run build` → Upload to S3
+*   **Domain:** CloudFront distribution URL
+
+#### Architecture Benefits
+*   **App Runner:** Automatic scaling, built-in load balancing, pay-per-use
+*   **EFS:** Persistent vector store across container restarts
+*   **Secrets Manager:** Secure API key management, no hardcoded secrets
+*   **CloudFront:** Global CDN for low-latency frontend access
+
+See `docs/aws_deployment.md` for detailed deployment instructions.
 

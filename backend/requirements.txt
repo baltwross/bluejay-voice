@@ -1,16 +1,31 @@
+# LiveKit Agent Framework
 livekit-agents
 livekit-plugins-openai
 livekit-plugins-deepgram
 livekit-plugins-elevenlabs
 livekit-plugins-silero
+
+# Environment & Configuration
 python-dotenv
+certifi
+
+# LangChain RAG Framework
 langchain
+langchain-core
 langchain-community
 langchain-openai
 langchain-chroma
+langchain-text-splitters
+
+# Vector Store
 chromadb
+
+# Document Loaders
 pymupdf
 youtube-transcript-api
 trafilatura
 beautifulsoup4
 python-docx
+
+# Tools
+tavily-python
