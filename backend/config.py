@@ -62,9 +62,33 @@ class ElevenLabsConfig:
     # Arnold-style Terminator voice
     voice_id: str = "8DGMp3sPQNZOuCfSIxxE"
     
-    # Models: Use multilingual_v2 for quality, turbo for speed (article reading)
-    model_default: str = "eleven_multilingual_v2"  # High quality for conversation
-    model_turbo: str = "eleven_turbo_v2"  # Fast for article reading
+    # Models: default to low-latency streaming models for responsiveness.
+    # Valid examples: eleven_turbo_v2_5, eleven_flash_v2_5, eleven_multilingual_v2
+    model_default: str = field(
+        default_factory=lambda: os.getenv("ELEVEN_TTS_MODEL", "eleven_flash_v2_5")
+    )
+    # Kept for backwards compatibility with earlier code paths.
+    model_turbo: str = field(
+        default_factory=lambda: os.getenv("ELEVEN_TTS_TURBO_MODEL", "eleven_turbo_v2_5")
+    )
+
+    # ElevenLabs streaming optimization (0 disables, 4 is max). This parameter is
+    # deprecated upstream but still supported by the API/plugin.
+    optimize_streaming_latency: int = field(
+        default_factory=lambda: int(os.getenv("ELEVEN_OPTIMIZE_STREAMING_LATENCY", "4"))
+    )
+
+    # When False, requests use "zero retention mode" and may be slightly faster.
+    enable_logging: bool = field(
+        default_factory=lambda: os.getenv("ELEVEN_ENABLE_LOGGING", "false").lower()
+        in ("1", "true", "yes", "y", "on")
+    )
+
+    # When False, skip alignment work (lower latency; you still get audio).
+    sync_alignment: bool = field(
+        default_factory=lambda: os.getenv("ELEVEN_SYNC_ALIGNMENT", "false").lower()
+        in ("1", "true", "yes", "y", "on")
+    )
     
     def __post_init__(self) -> None:
         if not self.api_key:
