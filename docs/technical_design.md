@@ -23,7 +23,7 @@ graph TD
         
         subgraph "External World"
             Ingest -->|Scrape| Web[Websites/YouTube]
-            Tools -->|Fetch| News[News APIs/RSS]
+            Tools -->|Search| Tavily[Tavily Search API]
         end
     end
 ```
@@ -45,6 +45,7 @@ This is a critical subsystem. It decouples *getting content* from *using content
     *   `PDFReader` (via `pymupdf`) for PDFs.
     *   `YoutubeTranscriptReader` for YouTube URLs.
     *   `Trafilatura` for generic Web URLs.
+    *   `DocxReader` (via `python-docx`) for Word documents.
 3.  **Transformation:**
     *   Clean text (remove headers/footers/timestamps).
     *   Chunking: SentenceSplitter (chunk_size=1024, overlap=20).
@@ -81,7 +82,10 @@ This is a critical subsystem. It decouples *getting content* from *using content
 | `metadata.timestamp` | Float | (Optional) For video transcripts |
 
 ## 4. Security & Deployment (Take-Home Scope)
-*   **API Keys:** Stored in `.env`, not committed.
+*   **API Keys:** Stored in `.env` (local) / AWS Secrets Manager (prod).
 *   **Local Run:** `python agent.py dev` connects to LiveKit Cloud from localhost.
-*   **Database:** Local file system (`./chroma_db`). No Docker setup required for the DB in this MVP phase.
+*   **Production Deployment (AWS):**
+    *   **Strategy:** Dockerized application deployed to **AWS App Runner** or **ECS Fargate**.
+    *   **Benefit:** Provides a publicly accessible URL (no local install required for users).
+    *   **Persistence:** Local ChromaDB is ephemeral in containers. For this MVP, data resets on deployment (acceptable). Ideally would use persistent volume or S3.
 
