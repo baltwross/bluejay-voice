@@ -318,3 +318,4 @@ aws ecs update-service --cluster bluejay-terminator-cluster \
   --task-definition bluejay-terminator-task:1
 ```
 
+

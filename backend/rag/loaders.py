@@ -241,3 +241,4 @@ class DocumentLoaderFactory:
             logger.error(f"Error loading text: {e}")
             raise
 
+

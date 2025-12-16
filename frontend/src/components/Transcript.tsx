@@ -139,6 +139,21 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
       });
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/e6f8272a-4cdc-4521-bede-fa9c0e8e594a', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        location: 'frontend/src/components/Transcript.tsx:messages',
+        message: 'Transcript messages processed',
+        data: { count: combined.length, timestamps: combined.map(m => m.timestamp.getTime()) },
+        timestamp: Date.now(),
+        sessionId: 'debug-session',
+        hypothesisId: 'timestamp_jitter'
+      })
+    }).catch(()=>{});
+    // #endregion
+
     // Sort by timestamp
     return combined.sort(
       (a, b) => a.timestamp.getTime() - b.timestamp.getTime()

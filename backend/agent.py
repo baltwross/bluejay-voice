@@ -160,6 +160,18 @@ class ReadingState:
         Returns:
             True if saved successfully, False otherwise.
         """
+        # #region agent log
+        import json as _json_log
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "file_write",
+                "location": "backend/agent.py:ReadingState.save",
+                "message": "Saving reading state",
+                "data": {"file_path": str(file_path), "is_reading": self.is_reading},
+                "timestamp": int(_json_log.time.time() * 1000)
+            }) + "\n")
+        # #endregion
+
         try:
             self.last_updated = datetime.now().isoformat()
             with open(file_path, "w") as f:
@@ -178,6 +190,18 @@ class ReadingState:
         Returns:
             ReadingState if loaded successfully and not expired, None otherwise.
         """
+        # #region agent log
+        import json as _json_log
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "shared_state",
+                "location": "backend/agent.py:ReadingState.load",
+                "message": "Loading reading state",
+                "data": {"file_path": str(file_path), "exists": file_path.exists()},
+                "timestamp": int(_json_log.time.time() * 1000)
+            }) + "\n")
+        # #endregion
+
         try:
             if not file_path.exists():
                 logger.debug("No saved reading state found")
