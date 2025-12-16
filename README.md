@@ -30,7 +30,7 @@ It allows users to:
 - **Framework**: LiveKit Agents (Python SDK).
 - **Voice Pipeline**:
     - **STT (Speech-to-Text)**: Deepgram (for speed/interruptibility).
-    - **LLM**: OpenAI GPT-4o (for reasoning).
+    - **LLM**: OpenAI gpt-5-nano-2025-08-07 (for reasoning).
     - **TTS (Text-to-Speech)**: ElevenLabs (custom Terminator/Arnold voice) or OpenAI.
 - **RAG Engine**:
     - **Framework**: LangChain.

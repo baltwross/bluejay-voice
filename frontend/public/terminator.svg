@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Skull outline -->
+  <ellipse cx="50" cy="45" rx="35" ry="40" fill="none" stroke="#ff0033" stroke-width="2" filter="url(#glow)"/>
+  <!-- Eyes -->
+  <circle cx="35" cy="40" r="8" fill="#ff0033" filter="url(#glow)"/>
+  <circle cx="65" cy="40" r="8" fill="#ff0033" filter="url(#glow)"/>
+  <!-- Nose -->
+  <polygon points="50,50 45,65 55,65" fill="none" stroke="#ff0033" stroke-width="1.5"/>
+  <!-- Jaw -->
+  <path d="M25 70 Q50 90 75 70" fill="none" stroke="#ff0033" stroke-width="2"/>
+  <!-- Teeth grid -->
+  <line x1="35" y1="70" x2="35" y2="82" stroke="#ff0033" stroke-width="1"/>
+  <line x1="45" y1="70" x2="45" y2="85" stroke="#ff0033" stroke-width="1"/>
+  <line x1="55" y1="70" x2="55" y2="85" stroke="#ff0033" stroke-width="1"/>
+  <line x1="65" y1="70" x2="65" y2="82" stroke="#ff0033" stroke-width="1"/>
+</svg>
+

@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS Variables for Terminator Theme */
+:root {
+  --color-red: #ff0033;
+  --color-red-glow: rgba(255, 0, 51, 0.4);
+  --color-cyan: #00ffff;
+  --color-cyan-glow: rgba(0, 255, 255, 0.3);
+  --color-dark: #0a0a0f;
+  --color-darker: #050508;
+  --color-surface: #12121a;
+  --color-border: #1f1f2e;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-darker);
+  color: #e0e0e8;
+  font-family: 'JetBrains Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* Scanline Effect Overlay */
+.scanline-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  z-index: 9999;
+}
+
+/* HUD Border Styling */
+.hud-border {
+  border: 1px solid var(--color-border);
+  position: relative;
+}
+
+.hud-border::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-red), transparent);
+}
+
+/* Glowing Text */
+.text-glow-red {
+  text-shadow: 0 0 10px var(--color-red-glow), 0 0 20px var(--color-red-glow);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 10px var(--color-cyan-glow), 0 0 20px var(--color-cyan-glow);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-darker);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-red);
+}
+
+/* Button Base */
+.btn-hud {
+  @apply px-4 py-2 font-mono text-sm uppercase tracking-wider;
+  @apply border border-terminator-border bg-terminator-surface;
+  @apply transition-all duration-200;
+  @apply hover:border-terminator-red hover:shadow-glow-red;
+  @apply active:scale-95;
+}
+
+.btn-hud-primary {
+  @apply btn-hud border-terminator-red text-terminator-red;
+  @apply hover:bg-terminator-red hover:text-terminator-dark;
+}
+
+.btn-hud-danger {
+  @apply btn-hud border-terminator-red bg-terminator-red/10 text-terminator-red;
+  @apply hover:bg-terminator-red hover:text-white;
+}
+
+/* Animation Utilities */
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.3; }
+}
+
+.animate-blink {
+  animation: blink 1s infinite;
+}
+

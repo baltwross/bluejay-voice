@@ -35,7 +35,7 @@ async def entrypoint(ctx: JobContext):
     # Create the agent session with STT-LLM-TTS pipeline
     session = AgentSession(
         stt=deepgram.STT(),
-        llm=openai.LLM(model="gpt-4o"),
+        llm=openai.LLM(model="gpt-5-nano-2025-08-07"),
         tts=openai.TTS(),  # Using OpenAI TTS for simple test
         vad=silero.VAD.load(),
     )
