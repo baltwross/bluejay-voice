@@ -48,7 +48,7 @@ async def entrypoint(ctx: JobContext):
     
     # Generate initial greeting
     await session.generate_reply(
-        instructions="Say 'Hello, I am the Bluejay Terminator. Connectivity established.' in a brief, direct manner."
+        instructions="Say something like 'Connection established. How can I help?' in a brief, direct manner."
     )
 
 

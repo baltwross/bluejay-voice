@@ -35,7 +35,7 @@ from livekit.agents import (
     llm as lk_llm,
 )
 from livekit.plugins import deepgram, openai, silero, elevenlabs, noise_cancellation
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins.turn_detector.multilingual import MultilingualModel  # type: ignore[import-not-found]
 
 from prompts import get_system_prompt, format_rag_context, should_trigger_rag
 from config import get_config, get_random_greeting
@@ -551,8 +551,9 @@ class TerminatorAssistant(Agent):
                 )
             else:
                 instruction = f"\n\n[This is the complete document: '{doc['title']}']"
-                # Mark reading as complete if it's a short document
-                self.stop_reading()
+                # Do not stop reading here, so the user can interrupt the playback.
+                # The state will remain "reading" until the user speaks (triggering pause)
+                # or until they explicitly say stop.
             
             logger.info(f"[Tool] Started reading '{doc['title']}' ({total_chunks} chunks)")
             return f"Beginning to read '{doc['title']}':\n\n{reading_content}{instruction}"
@@ -624,8 +625,7 @@ class TerminatorAssistant(Agent):
             if remaining_chunks <= 0:
                 # This is the last section
                 instruction = f"\n\n[Final section of '{self._reading_state.document_title}'.]"
-                # Mark as finished after this batch
-                self.stop_reading()
+                # Do not stop reading here so user can interrupt the final section.
             else:
                 instruction = f"\n\n[{progress}. Say 'continue' to hear more, or 'stop' to end.]"
             
@@ -874,8 +874,9 @@ def create_agent_session(config=None) -> AgentSession:
     llm = openai.LLM(model=config.openai.llm_model)
     
     # Configure ElevenLabs TTS with Arnold voice
+    # API key is read automatically from ELEVEN_API_KEY env var
     tts = elevenlabs.TTS(
-        voice_id=config.elevenlabs.voice_id,
+        voice_id=config.elevenlabs.voice_id,  # 8DGMp3sPQNZOuCfSIxxE
         model=config.elevenlabs.model_default,  # eleven_multilingual_v2 for quality
     )
     
@@ -906,7 +907,7 @@ def create_agent_session(config=None) -> AgentSession:
     logger.info(
         f"AgentSession created with: "
         f"STT=Deepgram, LLM={config.openai.llm_model}, "
-        f"TTS=ElevenLabs ({config.elevenlabs.model_default}), VAD=Silero"
+        f"TTS=ElevenLabs (model={config.elevenlabs.model_default}, voice_id={config.elevenlabs.voice_id}), VAD=Silero"
     )
     
     return session

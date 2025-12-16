@@ -58,6 +58,8 @@ It allows users to:
 - Node.js 18+
 - LiveKit Cloud Account
 - OpenAI API Key
+- ElevenLabs API Key
+- Deepgram API Key
 
 ### Installation
 
@@ -73,7 +75,7 @@ It allows users to:
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
-    cp env.example .env
+    cp env.template .env
     # Edit .env with your API keys
     ```
 
@@ -81,8 +83,64 @@ It allows users to:
     ```bash
     cd frontend
     npm install
-    npm run dev
     ```
+
+### Running the Application
+
+**Option 1: Quick Start (All Services)**
+```bash
+./scripts/dev.sh
+```
+This starts the token server, LiveKit agent, and frontend dev server together.
+
+**Option 2: Manual Start (Separate Terminals)**
+
+Terminal 1 - Token Server:
+```bash
+cd backend
+source venv/bin/activate
+python token_server.py
+```
+
+Terminal 2 - LiveKit Agent:
+```bash
+cd backend
+source venv/bin/activate
+python agent.py dev
+```
+
+Terminal 3 - Frontend:
+```bash
+cd frontend
+npm run dev
+```
+
+**Access the Application:**
+- Frontend: http://localhost:5173
+- Token API: http://localhost:8080
+
+### Frontend Architecture
+
+The React frontend (`frontend/`) includes:
+
+| Component | Purpose |
+|-----------|---------|
+| `AgentVisualizer` | Audio waveform visualization with T-800 skull icon |
+| `Transcript` | Real-time conversation transcript with auto-scroll |
+| `ControlPanel` | Start/end call, mic toggle, connection status |
+| `InputConsole` | "Share with Terminator" URL/file upload interface |
+
+**Key Hooks:**
+- `useConnection` - Manages token fetching and connection state
+- `useAgent` - LiveKit room connection and agent detection
+- `useDocuments` - Document ingestion and listing
+
+**State Flow:**
+1. User clicks "Initialize Connection"
+2. Frontend fetches token from `/api/token`
+3. LiveKitRoom connects with token
+4. Agent joins the room automatically
+5. Audio streaming begins via WebRTC
 
 ## Design Decisions & Trade-offs
 

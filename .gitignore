@@ -1,4 +1,4 @@
-d# --- Python Backend ---
+# --- Python Backend ---
 backend/venv/
 backend/__pycache__/
 backend/*.egg-info/
@@ -131,4 +131,3 @@ temp/
 venv/bin/coloredlogs
 
 .taskmaster/tasks/tasks.json
-.gitignore

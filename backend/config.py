@@ -56,7 +56,8 @@ class DeepgramConfig:
 @dataclass
 class ElevenLabsConfig:
     """ElevenLabs TTS settings."""
-    api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
+    # API key is read automatically by LiveKit plugin from ELEVEN_API_KEY
+    api_key: str = field(default_factory=lambda: os.getenv("ELEVEN_API_KEY", ""))
     
     # Arnold-style Terminator voice
     voice_id: str = "8DGMp3sPQNZOuCfSIxxE"
@@ -67,7 +68,7 @@ class ElevenLabsConfig:
     
     def __post_init__(self) -> None:
         if not self.api_key:
-            raise ValueError("ELEVENLABS_API_KEY environment variable is required")
+            raise ValueError("ELEVEN_API_KEY environment variable is required")
 
 
 @dataclass

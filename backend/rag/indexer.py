@@ -269,3 +269,139 @@ class DocumentIndexer:
             logger.error(f"Error getting stats: {e}")
             return {"error": str(e)}
 
+    # =========================================================================
+    # CONVENIENCE METHODS FOR TOKEN SERVER API
+    # =========================================================================
+    
+    def index_youtube(self, url: str, title: Optional[str] = None) -> dict:
+        """
+        Ingest a YouTube video by URL.
+        
+        Args:
+            url: YouTube video URL
+            title: Optional custom title
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        result = self.ingest(url, title=title)
+        if result.get("success"):
+            result["chunk_count"] = result.get("num_chunks", 0)
+        return result
+    
+    def index_web(self, url: str, title: Optional[str] = None) -> dict:
+        """
+        Ingest a web article by URL.
+        
+        Args:
+            url: Web page URL
+            title: Optional custom title
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        result = self.ingest(url, title=title)
+        if result.get("success"):
+            result["chunk_count"] = result.get("num_chunks", 0)
+        return result
+    
+    def index_pdf(self, source: str, title: Optional[str] = None) -> dict:
+        """
+        Ingest a PDF from URL or file path.
+        
+        Args:
+            source: PDF URL or file path
+            title: Optional custom title
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        result = self.ingest(source, title=title)
+        if result.get("success"):
+            result["chunk_count"] = result.get("num_chunks", 0)
+        return result
+    
+    def index_pdf_bytes(self, content: bytes, filename: str) -> dict:
+        """
+        Ingest a PDF from raw bytes (file upload).
+        
+        Args:
+            content: PDF file bytes
+            filename: Original filename
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        import tempfile
+        import os
+        
+        # Write to temp file and ingest
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            result = self.ingest(tmp_path, title=filename.replace(".pdf", "").replace("_", " "))
+            if result.get("success"):
+                result["chunk_count"] = result.get("num_chunks", 0)
+            return result
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    
+    def index_docx_bytes(self, content: bytes, filename: str) -> dict:
+        """
+        Ingest a DOCX file from raw bytes.
+        
+        Args:
+            content: DOCX file bytes
+            filename: Original filename
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        try:
+            from docx import Document as DocxDocument
+            import io
+            
+            # Parse DOCX
+            doc = DocxDocument(io.BytesIO(content))
+            
+            # Extract text from paragraphs
+            text_parts = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    text_parts.append(para.text)
+            
+            full_text = "\n\n".join(text_parts)
+            title = filename.replace(".docx", "").replace("_", " ")
+            
+            result = self.ingest_text(full_text, title)
+            if result.get("success"):
+                result["chunk_count"] = result.get("num_chunks", 0)
+            return result
+            
+        except ImportError:
+            logger.error("python-docx not installed")
+            return {"success": False, "error": "DOCX support not available"}
+        except Exception as e:
+            logger.error(f"Error indexing DOCX: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def index_text(self, text: str, title: str) -> dict:
+        """
+        Ingest raw text content.
+        
+        Args:
+            text: Text content
+            title: Document title
+            
+        Returns:
+            Dictionary with ingestion results
+        """
+        result = self.ingest_text(text, title)
+        if result.get("success"):
+            result["chunk_count"] = result.get("num_chunks", 0)
+        return result
+

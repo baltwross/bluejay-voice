@@ -1,13 +1,19 @@
 # LiveKit Agent Framework
-livekit-agents
+livekit-agents[turn-detector]~=1.2
 livekit-plugins-openai
 livekit-plugins-deepgram
 livekit-plugins-elevenlabs
 livekit-plugins-silero
+livekit-plugins-noise-cancellation
 
 # Environment & Configuration
 python-dotenv
 certifi
+
+# Web Server (Token Server)
+fastapi
+uvicorn
+python-multipart
 
 # LangChain RAG Framework
 langchain

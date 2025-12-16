@@ -6,6 +6,15 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Proxy API requests to the backend token server
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
+  // Environment variable prefix
+  envPrefix: 'VITE_',
 });
-

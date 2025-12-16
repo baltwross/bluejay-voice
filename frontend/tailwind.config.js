@@ -22,8 +22,8 @@ export default {
         },
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'SF Mono', 'monospace'],
-        display: ['Orbitron', 'sans-serif'],
+        mono: ['Terminator', 'JetBrains Mono', 'monospace'],
+        display: ['Terminator', 'sans-serif'],
       },
       animation: {
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',

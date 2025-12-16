@@ -163,11 +163,58 @@ This is a critical subsystem. It decouples *getting content* from *using content
     *   **TTS:** ElevenLabs with Arnold-style voice (Voice ID: configurable)
 
 ### 2.7 Frontend (React)
-*   **Connection Management:** `useLiveKitRoom` hook.
-*   **State:**
-    *   `isRecording`: boolean.
-    *   `transcript`: array of `{ sender: 'user' | 'agent', text: string }`.
-    *   `activeDocument`: metadata of the currently discussed doc.
+
+The frontend is built with React 18, Vite, and Tailwind CSS with a Terminator HUD aesthetic.
+
+#### Component Architecture
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `AgentVisualizer` | `components/AgentVisualizer.tsx` | LiveKit BarVisualizer with T-800 skull icon, state indicators |
+| `Transcript` | `components/Transcript.tsx` | Real-time conversation log with auto-scrolling |
+| `ControlPanel` | `components/ControlPanel.tsx` | Call controls (start/end, mic toggle) |
+| `InputConsole` | `components/InputConsole.tsx` | URL/file upload for RAG ingestion |
+| `ErrorBoundary` | `components/ErrorBoundary.tsx` | Error catching and recovery UI |
+
+#### Custom Hooks
+
+| Hook | File | Purpose |
+|------|------|---------|
+| `useConnection` | `hooks/useConnection.ts` | Token fetching, connection state management |
+| `useAgent` | `hooks/useAgent.ts` | LiveKit room connection, agent detection |
+| `useDocuments` | `hooks/useDocuments.ts` | Document ingestion, listing |
+
+#### State Management
+
+- **Connection State:** Token fetching → Room connection → Agent presence
+- **Agent State:** Tracked via `lk.agent.state` participant attribute (`listening`, `thinking`, `speaking`)
+- **Transcript:** Real-time via `useVoiceAssistant` hook (agent + user transcriptions)
+
+#### API Endpoints (Token Server)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/token` | POST | Generate LiveKit access token |
+| `/api/ingest` | POST | Ingest URL content (YouTube, web, PDF) |
+| `/api/ingest/file` | POST | Upload and ingest file |
+| `/api/documents` | GET | List all ingested documents |
+
+#### LiveKit Integration
+
+```tsx
+<LiveKitRoom
+  token={token}
+  serverUrl={serverUrl}
+  connect={true}
+  audio={true}
+>
+  <RoomAudioRenderer />      {/* Plays agent audio */}
+  <AgentVisualizer />        {/* Shows audio bars + state */}
+  <Transcript />             {/* Real-time transcription */}
+  <ControlPanel />           {/* User controls */}
+</LiveKitRoom>
+```
+
 *   **RPC / Data Messages:**
     *   The Frontend sends a data packet: `{ type: "UPLOAD_URL", url: "..." }`.
     *   The Backend receives this, triggers ingestion, and sends back: `{ type: "UPLOAD_STATUS", status: "success", summary: "..." }`.

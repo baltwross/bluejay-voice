@@ -1,3 +1,4 @@
-// Custom hooks will be exported from here
-export {};
-
+// Custom hooks for LiveKit and state management
+export { useAgent } from './useAgent';
+export { useConnection } from './useConnection';
+export { useDocuments } from './useDocuments';
