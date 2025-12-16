@@ -71,7 +71,75 @@ The LLM naturally decides based on the user's message:
 
 This eliminates the need for mode switching or complex state machines.
 
-### 2.3 The Ingestion Pipeline (`backend/rag/`)
+### 2.3 Agent State Management
+
+The agent maintains in-memory state for tracking reading sessions. This is implemented in `backend/agent.py`.
+
+#### ReadingState Dataclass
+
+```python
+@dataclass
+class ReadingState:
+    is_reading: bool = False        # Currently reading aloud?
+    is_paused: bool = False         # Paused (can resume)?
+    document_id: str | None         # Which document?
+    document_title: str | None      # Human-readable title
+    current_chunk: int = 0          # Current position (0-indexed)
+    total_chunks: int = 0           # Total chunks in document
+```
+
+#### State Management Methods (on TerminatorAssistant)
+
+| Method | Purpose |
+|--------|---------|
+| `start_reading(doc_id, title, total, start)` | Begin reading a document |
+| `update_reading_position(chunk)` | Update current position |
+| `advance_reading_position()` | Move to next chunk (returns False at end) |
+| `pause_reading()` | Pause reading (preserves position) |
+| `resume_reading()` | Resume from paused position |
+| `stop_reading()` | Stop and reset all state |
+| `get_reading_status()` | Get human-readable status string |
+
+#### Properties
+
+- `is_reading` — Quick check if in reading mode
+- `reading_state` — Access the full `ReadingState` object
+- `reading_state.can_resume` — Check if there's a paused session
+- `reading_state.progress_percent` — Reading progress as percentage
+
+#### Usage Example (for Task 5 implementation)
+
+```python
+# When user says "read the Claude Code article"
+doc = retriever.find_document_by_title("Claude Code")
+if doc:
+    # Get document chunks for reading
+    result = retriever.retrieve_for_reading(doc["document_id"], start_chunk=0, num_chunks=5)
+    
+    # Initialize reading state
+    self.start_reading(
+        document_id=doc["document_id"],
+        document_title=doc["title"],
+        total_chunks=result.sources[0].get("total_chunks", len(result.documents)),
+    )
+    
+    # Read first chunk aloud...
+    
+# When user interrupts
+self.pause_reading()
+
+# When user says "continue reading"
+if self.reading_state.can_resume:
+    self.resume_reading()
+    # Get next chunks from where we left off
+    result = retriever.retrieve_for_reading(
+        self.reading_state.document_id,
+        start_chunk=self.reading_state.current_chunk,
+        num_chunks=5,
+    )
+```
+
+### 2.5 The Ingestion Pipeline (`backend/rag/`)
 This is a critical subsystem. It decouples *getting content* from *using content*.
 
 1.  **Input:** Raw File or URL.
@@ -86,7 +154,7 @@ This is a critical subsystem. It decouples *getting content* from *using content
 4.  **Embedding:** `OpenAIEmbeddings` (text-embedding-3-large) - OpenAI's best embedding model, recommended by LangChain.
 5.  **Storage:** `Chroma` via LangChain (persisted to `./chroma_db`).
 
-### 2.4 The Voice Agent Configuration
+### 2.6 The Voice Agent Configuration
 *   **VAD (Voice Activity Detection):** `Silero VAD`. Essential for interruptibility.
 *   **Turn Detection:** Eager. If the user pauses for > 600ms, the agent takes the turn.
 *   **Voice Pipeline:**
@@ -94,7 +162,7 @@ This is a critical subsystem. It decouples *getting content* from *using content
     *   **LLM:** OpenAI `gpt-5-nano-2025-08-07`
     *   **TTS:** ElevenLabs with Arnold-style voice (Voice ID: configurable)
 
-### 2.5 Frontend (React)
+### 2.7 Frontend (React)
 *   **Connection Management:** `useLiveKitRoom` hook.
 *   **State:**
     *   `isRecording`: boolean.
@@ -152,4 +220,98 @@ This is a critical subsystem. It decouples *getting content* from *using content
 *   **CloudFront:** Global CDN for low-latency frontend access
 
 See `docs/aws_deployment.md` for detailed deployment instructions.
+
+---
+
+## 5. Task 5 Implementation Guide: Article Reading Mode
+
+> **For the next agent working on Task 5** — This section provides everything you need.
+
+### What's Already Done (Subtask 5.1 ✅)
+
+The **ReadingState** dataclass and all state management methods are **already implemented** in `backend/agent.py`. You don't need to create them. See section 2.3 above for the full API.
+
+### Key Files to Know
+
+| File | What It Contains |
+|------|------------------|
+| `backend/agent.py` | `TerminatorAssistant` class with state management methods |
+| `backend/rag/retriever.py` | `DocumentRetriever.retrieve_for_reading()` for sequential chunks |
+| `backend/config.py` | `ElevenLabsConfig.model_turbo` = `eleven_turbo_v2` for fast TTS |
+| `docs/product_requirements.md` | Section 3.1 has Article Reading Mode requirements |
+
+### How to Implement read_document Tool (Subtask 5.2)
+
+```python
+@function_tool()
+async def read_document(
+    self,
+    context: RunContext,
+    document_title: str,
+) -> str:
+    """Read a document aloud to the user.
+    
+    Args:
+        document_title: The title or partial title of the document to read.
+    """
+    # 1. Find the document
+    retriever = self._get_retriever()
+    doc = retriever.find_document_by_title(document_title)
+    
+    if not doc:
+        return f"I couldn't find a document matching '{document_title}'."
+    
+    # 2. Get chunks for reading
+    result = retriever.retrieve_for_reading(
+        document_id=doc["document_id"],
+        start_chunk=0,
+        num_chunks=5,  # Read 5 chunks at a time
+    )
+    
+    # 3. Initialize reading state
+    self.start_reading(
+        document_id=doc["document_id"],
+        document_title=doc["title"],
+        total_chunks=len(result.documents),
+    )
+    
+    # 4. Return first chunk for TTS
+    # The agent will speak this, and you can implement
+    # continuation logic in on_user_turn_completed
+    return result.context
+```
+
+### How to Handle Interruptions (Subtask 5.3, 5.4)
+
+LiveKit's VAD automatically stops TTS when user speaks. In `on_user_turn_completed`:
+
+```python
+async def on_user_turn_completed(self, turn_ctx, new_message):
+    user_text = new_message.text_content.lower()
+    
+    # If reading and user interrupts
+    if self.is_reading:
+        self.pause_reading()  # Save position
+        
+        # Check for control commands
+        if "stop" in user_text or "that's enough" in user_text:
+            self.stop_reading()
+            return  # Let LLM respond naturally
+        
+        if "continue" in user_text or "keep going" in user_text:
+            if self.reading_state.can_resume:
+                self.resume_reading()
+                # Get next chunks and continue reading...
+```
+
+### What to Defer (Subtask 5.5)
+
+**Persistence is NOT needed for MVP.** ReadingState is in-memory only. If the agent restarts, reading state is lost — this is acceptable for the interview demo.
+
+### Reference Documentation
+
+- **LiveKit External Data**: https://docs.livekit.io/agents/build/external-data
+- **LiveKit VAD/Interruption**: https://docs.livekit.io/agents/build/turns/vad  
+- **LiveKit Tools**: https://docs.livekit.io/agents/build/tools
+- **Product Requirements**: `docs/product_requirements.md` section 3.1
 
