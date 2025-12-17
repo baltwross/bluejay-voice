@@ -44,11 +44,11 @@ The fastest way to deploy is using the provided scripts:
 │  │  - TAVILY_API_KEY                                          │      │
 │  └───────────────────────────────────────────────────────────┘      │
 └─────────────────────────────────────────────────────────────────────┘
-                                    │
-                           ┌────────▼────────┐
-                           │  LiveKit Cloud  │
-                           │   (External)    │
-                           └─────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  LiveKit Cloud  │
+                    │   (External)    │
+                    └─────────────────┘
 ```
 
 ## Deployment Options

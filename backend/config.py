@@ -216,7 +216,7 @@ class AgentConfig:
 # =============================================================================
 
 GREETING_TEMPLATES = [
-    "Connection established. I am your AI assistant, sent back from the future to be your assistant here, in this time. How can I help you stay ahead of AI developments?",
+    "Connection established. I am your AI assistant, sent back from the future to assist you here, in this time. How can I help you stay ahead of AI developments?",
     "Affirmative. Systems online. I am ready to assist you with AI tools and developments. What do you need?",
     "Link established. T-800 unit operational. Let's get you up to speed on the latest AI tools.",
     "Connection secure. I am your AI assistant, here to help you master AI engineering tools. What's on your mind?",
