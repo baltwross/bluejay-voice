@@ -17,10 +17,10 @@ from dataclasses import dataclass
 
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_chroma import Chroma  # type: ignore[import-untyped]
 
-# BM25 for keyword search
-from rank_bm25 import BM25Okapi
+# BM25 for keyword search (no type stubs available)
+from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 from .config import RAGConfig, get_config
 

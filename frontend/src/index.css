@@ -1,9 +1,8 @@
+@import '@livekit/components-styles';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import LiveKit component styles */
-@import '@livekit/components-styles';
 
 @font-face {
   font-family: 'Terminator';

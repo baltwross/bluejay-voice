@@ -32,6 +32,8 @@ rank-bm25
 # Document Loaders
 pymupdf
 youtube-transcript-api
+pytube
+yt-dlp
 trafilatura
 beautifulsoup4
 python-docx

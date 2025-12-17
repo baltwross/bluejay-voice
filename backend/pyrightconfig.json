@@ -1,0 +1,13 @@
+{
+  "include": ["."],
+  "exclude": ["venv", "__pycache__", "chroma_db"],
+  "venvPath": ".",
+  "venv": "venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false
+}
+
