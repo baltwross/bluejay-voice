@@ -83,23 +83,45 @@ class DocumentRetriever:
         Returns:
             RetrievalResult with documents, scores, and formatted context
         """
-        k = k or self.config.retrieval_k
-        score_threshold = score_threshold or self.config.retrieval_score_threshold
+        if k is None:
+            k = self.config.retrieval_k
+        if score_threshold is None:
+            score_threshold = self.config.retrieval_score_threshold
         
         logger.info(f"Retrieving for query: '{query[:50]}...' (k={k})")
         
         # Build filter if specified
         filter_dict = self._build_filter(document_id, source_type)
         
-        # Perform similarity search
-        search_kwargs = {"k": k}
+        # Perform similarity search WITH scores.
+        #
+        # Per LangChain docs, `similarity_search_with_score` returns a distance
+        # metric that varies inversely with similarity (lower = closer/more similar).
+        # We convert it to a monotonic "relevance" score in (0, 1] so we can
+        # apply a stable threshold: relevance = 1 / (1 + distance).
+        search_kwargs: Dict[str, Any] = {"k": k}
         if filter_dict:
             search_kwargs["filter"] = filter_dict
         
-        documents = self.vector_store.similarity_search(query, **search_kwargs)
+        scored_results = self.vector_store.similarity_search_with_score(
+            query,
+            **search_kwargs,
+        )
         
-        # Use placeholder scores (Chroma L2 distance isn't ideal for thresholding)
-        scores = [1.0] * len(documents)
+        filtered_documents: List[Document] = []
+        filtered_scores: List[float] = []
+        for doc, distance in scored_results:
+            try:
+                dist_val = float(distance)
+            except (TypeError, ValueError):
+                dist_val = 0.0
+            relevance = 1.0 / (1.0 + max(dist_val, 0.0))
+            if relevance >= (score_threshold or 0.0):
+                filtered_documents.append(doc)
+                filtered_scores.append(relevance)
+        
+        documents = filtered_documents
+        scores = filtered_scores
         
         if not documents:
             logger.info("No results found")
@@ -288,7 +310,8 @@ class DocumentRetriever:
         tokens = re.findall(r'\[?\w+\]?', text)
         return tokens
     
-    def _enhance_query_for_keywords(self, query: str) -> str:
+    @staticmethod
+    def _enhance_query_for_keywords(query: str) -> str:
         """
         Enhance query for better BM25 keyword matching.
         
@@ -298,21 +321,66 @@ class DocumentRetriever:
         """
         enhanced = query.lower()
         
-        # Number word to digit mapping
-        number_words = {
-            'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
-            'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
-            'eleven': '11', 'twelve': '12', 'thirteen': '13', 'fourteen': '14',
-            'fifteen': '15', 'sixteen': '16', 'seventeen': '17', 'eighteen': '18',
-            'nineteen': '19', 'twenty': '20', 'thirty': '30', 'forty': '40',
-            'fifty': '50',
+        # Convert number words to digits for BM25 keyword matching.
+        #
+        # Important: handle compound numbers like "thirty seven" -> 37 (not "30 7").
+        units = {
+            "zero": 0,
+            "one": 1,
+            "two": 2,
+            "three": 3,
+            "four": 4,
+            "five": 5,
+            "six": 6,
+            "seven": 7,
+            "eight": 8,
+            "nine": 9,
+            "ten": 10,
+            "eleven": 11,
+            "twelve": 12,
+            "thirteen": 13,
+            "fourteen": 14,
+            "fifteen": 15,
+            "sixteen": 16,
+            "seventeen": 17,
+            "eighteen": 18,
+            "nineteen": 19,
+        }
+        tens = {
+            "twenty": 20,
+            "thirty": 30,
+            "forty": 40,
+            "fifty": 50,
+            "sixty": 60,
+            "seventy": 70,
+            "eighty": 80,
+            "ninety": 90,
         }
         
-        # Replace number words with digits
-        for word, digit in number_words.items():
-            if word in enhanced:
-                # Add bracket format for references: "fifteen" → "15 [15]"
-                enhanced = enhanced.replace(word, f"{digit} [{digit}]")
+        def _compound_repl(match: re.Match) -> str:
+            tens_word = match.group(1)
+            unit_word = match.group(2)
+            value = tens.get(tens_word, 0) + units.get(unit_word, 0)
+            return f"{value} [{value}]"
+        
+        # Handle compounds first: "thirty seven", "twenty one", etc.
+        enhanced = re.sub(
+            r"\b("
+            + "|".join(sorted(tens.keys(), key=len, reverse=True))
+            + r")\s+("
+            + "|".join(sorted([k for k in units.keys() if units[k] < 10], key=len, reverse=True))
+            + r")\b",
+            _compound_repl,
+            enhanced,
+        )
+        
+        # Replace standalone units (one..nineteen)
+        for word, value in units.items():
+            enhanced = re.sub(rf"\b{re.escape(word)}\b", f"{value} [{value}]", enhanced)
+        
+        # Replace standalone tens (twenty..ninety)
+        for word, value in tens.items():
+            enhanced = re.sub(rf"\b{re.escape(word)}\b", f"{value} [{value}]", enhanced)
         
         # Also add standalone number pattern if "reference" is mentioned
         if 'reference' in enhanced or 'ref' in enhanced:
@@ -321,6 +389,12 @@ class DocumentRetriever:
             for num in numbers:
                 if f'[{num}]' not in enhanced:
                     enhanced += f' [{num}]'
+        
+        # If the user references a figure/table/section number, add common variants.
+        # Example: "figure 37" -> "fig 37 fig. 37".
+        fig_nums = re.findall(r"\b(?:figure|fig\.?)\s*(\d+)\b", enhanced)
+        for num in fig_nums:
+            enhanced += f" fig {num} fig. {num} figure {num}"
         
         logger.debug(f"Enhanced query: '{query}' → '{enhanced}'")
         return enhanced
@@ -575,14 +649,19 @@ class DocumentRetriever:
                         if doc_id not in doc_metadata:
                             doc_metadata[doc_id] = metadata
             
-            documents = []
+            documents: List[Dict[str, Any]] = []
             for doc_id, metadata in doc_metadata.items():
                 documents.append({
                     "document_id": doc_id,
                     "title": metadata.get("title", "Unknown"),
                     "source_type": metadata.get("source_type", "unknown"),
                     "total_chunks": doc_chunks.get(doc_id, 0),
+                    "source_url": metadata.get("source_url", ""),
+                    "ingested_at": metadata.get("ingested_at", ""),
                 })
+            
+            # Newest-first ordering for "what did I just upload?" style UX.
+            documents.sort(key=lambda d: str(d.get("ingested_at", "")), reverse=True)
             
             logger.info(f"Listed {len(documents)} documents in knowledge base")
             return documents

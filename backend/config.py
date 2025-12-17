@@ -65,7 +65,7 @@ class ElevenLabsConfig:
     # INSPIRE/FATE: ElevenLabs premade voices (original custom ones aren't accessible)
     voice_id: str = "8DGMp3sPQNZOuCfSIxxE"  # Default: T-800 Terminator voice (custom)
     voice_id_terminator: str = "8DGMp3sPQNZOuCfSIxxE"  # T-800 Terminator voice (custom)
-    voice_id_inspire: str = "TxGEqnHWrfWFTfGW9XjX"  # Josh - motivational (premade)
+    voice_id_inspire: str = "qBDvhofpxp92JgXJxDjB"  # Lily Wolfe - motivational (premade)
     voice_id_fate: str = "pNInz6obpgDQGcFmaJgB"  # Adam - dramatic (premade)
     voice_id_fallback: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel - reliable fallback
     
