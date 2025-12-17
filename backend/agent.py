@@ -35,7 +35,6 @@ from livekit.agents import (
     llm as lk_llm,
 )
 from livekit.plugins import deepgram, openai, silero, elevenlabs, noise_cancellation
-from livekit.plugins.turn_detector.multilingual import MultilingualModel  # type: ignore[import-not-found]
 
 from prompts import get_system_prompt, format_rag_context, should_trigger_rag
 from config import get_config, get_random_greeting
@@ -891,17 +890,36 @@ def create_agent_session(config=None) -> AgentSession:
     if config is None:
         config = get_config()
     
-    # Configure Deepgram STT
-    stt = deepgram.STT()
+    # Configure Deepgram STT (defaults are already tuned for low delay)
+    stt = deepgram.STT(
+        model=os.getenv("DEEPGRAM_MODEL", "nova-3"),
+        language=os.getenv("DEEPGRAM_LANGUAGE", "en-US"),
+        interim_results=True,
+        punctuate=True,
+        smart_format=False,
+        no_delay=True,
+        endpointing_ms=int(os.getenv("DEEPGRAM_ENDPOINTING_MS", "25")),
+    )
     
     # Configure OpenAI LLM
-    llm = openai.LLM(model=config.openai.llm_model)
+    # Keep the model fast and avoid unnecessary reasoning latency.
+    llm = openai.LLM(
+        model=config.openai.llm_model,
+        temperature=0.2,
+        reasoning_effort="low",
+        verbosity="low",
+        max_completion_tokens=int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "220")),
+    )
     
     # Configure ElevenLabs TTS with Arnold voice
     # API key is read automatically from ELEVEN_API_KEY env var
     tts = elevenlabs.TTS(
         voice_id=config.elevenlabs.voice_id,  # 8DGMp3sPQNZOuCfSIxxE
-        model=config.elevenlabs.model_default,  # eleven_multilingual_v2 for quality
+        # Prefer low-latency models for conversational responsiveness.
+        model=config.elevenlabs.model_default,
+        streaming_latency=config.elevenlabs.optimize_streaming_latency,
+        enable_logging=config.elevenlabs.enable_logging,
+        sync_alignment=config.elevenlabs.sync_alignment,
     )
     
     # Configure Silero VAD for interruptibility
@@ -911,13 +929,21 @@ def create_agent_session(config=None) -> AgentSession:
     # - min_speech_duration: Minimum duration to register as speech (default 0.05s)
     # - min_silence_duration: How long silence before end of speech (default 0.55s)
     # - activation_threshold: Sensitivity (default 0.5, lower = more sensitive)
-    vad = silero.VAD.load(
-        min_speech_duration=0.05,    # Quick speech detection for interruptions
-        min_silence_duration=0.5,    # Slightly faster end-of-speech detection
+    low_latency_mode = os.getenv("LOW_LATENCY_MODE", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
     )
-    
-    # Configure turn detection
-    turn_detection = MultilingualModel()
+
+    # For responsiveness, end the user turn quickly once they stop speaking.
+    # The AgentSession also applies endpointing delays; we tune both.
+    vad = silero.VAD.load(
+        min_speech_duration=0.05,  # quick speech detection for interruptions
+        min_silence_duration=0.2 if low_latency_mode else 0.5,
+        prefix_padding_duration=0.2 if low_latency_mode else 0.5,
+    )
     
     # Create the session
     session = AgentSession(
@@ -925,7 +951,16 @@ def create_agent_session(config=None) -> AgentSession:
         llm=llm,
         tts=tts,
         vad=vad,
-        turn_detection=turn_detection,
+        # Avoid EOU model turn detection (can add 1-2s+). Rely on VAD with
+        # aggressive endpointing for consistently low latency.
+        turn_detection="vad",
+        min_endpointing_delay=0.1 if low_latency_mode else 0.5,
+        max_endpointing_delay=0.6 if low_latency_mode else 3.0,
+        # Overlap LLM/TTS with incoming transcripts to reduce perceived latency.
+        preemptive_generation=low_latency_mode,
+        # Let interruptions register quickly in low-latency mode.
+        min_interruption_duration=0.25 if low_latency_mode else 0.5,
+        false_interruption_timeout=0.8 if low_latency_mode else 2.0,
     )
     
     logger.info(
@@ -970,7 +1005,14 @@ async def entrypoint(ctx: agents.JobContext):
         room=ctx.room,
         agent=assistant,
         room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVC(),
+            # Noise cancellation can add noticeable processing/queueing delay.
+            # Prefer disabling it for responsiveness unless explicitly enabled.
+            noise_cancellation=(
+                noise_cancellation.BVC()
+                if os.getenv("ENABLE_NOISE_CANCELLATION", "false").lower()
+                in ("1", "true", "yes", "y", "on")
+                else None
+            ),
         ),
     )
     
