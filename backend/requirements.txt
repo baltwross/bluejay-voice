@@ -1,18 +1,46 @@
-livekit-agents
+# LiveKit Agent Framework
+livekit-agents[turn-detector]~=1.2
 livekit-plugins-openai
 livekit-plugins-deepgram
 livekit-plugins-elevenlabs
 livekit-plugins-silero
+livekit-plugins-noise-cancellation
+
+# Environment & Configuration
 python-dotenv
-llama-index
-llama-index-vector-stores-chroma
-llama-index-embeddings-openai
+certifi
+
+# Web Server (Token Server)
+fastapi
+uvicorn
+python-multipart
+
+# LangChain RAG Framework
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-chroma
+langchain-text-splitters
+
+# Vector Store
 chromadb
+
+# Hybrid Search (BM25 keyword search)
+rank-bm25
+
+# Document Loaders
 pymupdf
 youtube-transcript-api
 trafilatura
 beautifulsoup4
 python-docx
+
+# Tools
 tavily-python
-fastapi
-uvicorn
+
+# Testing
+pytest
+pytest-asyncio
+httpx
+livekit  # For client-side WebRTC testing

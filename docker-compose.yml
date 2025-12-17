@@ -1,0 +1,102 @@
+# =============================================================================
+# Bluejay Terminator - Docker Compose Configuration
+# =============================================================================
+# Local development environment with all services
+#
+# Usage:
+#   docker-compose up --build        # Build and start all services
+#   docker-compose up -d             # Start in detached mode
+#   docker-compose logs -f           # Follow logs
+#   docker-compose down              # Stop all services
+#   docker-compose down -v           # Stop and remove volumes
+#
+# Services:
+#   - backend:  Python agent (LiveKit + Token Server) on port 8080
+#   - frontend: React app (Vite dev server) on port 5173
+# =============================================================================
+
+# version: '3.8'  # Removed - obsolete in newer Docker Compose
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend: Python Agent + Token Server
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bluejay-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # LiveKit Cloud Configuration
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      # OpenAI Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Deepgram Configuration
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      # ElevenLabs Configuration
+      - ELEVEN_API_KEY=${ELEVEN_API_KEY}
+      # Tavily Configuration (optional)
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      # Performance Settings
+      - ENABLE_NOISE_CANCELLATION=${ENABLE_NOISE_CANCELLATION:-false}
+      # Python settings
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist ChromaDB data
+      - chroma_data:/app/chroma_db
+      # Note: .reading_state.json is created at runtime by the application
+      # For persistence, you can mount a directory instead if needed
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - bluejay-network
+
+  # ---------------------------------------------------------------------------
+  # Frontend: React + Vite Development Server
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: bluejay-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:8080
+    volumes:
+      # Mount source for hot reloading in development
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - ./frontend/index.html:/app/index.html:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - bluejay-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  chroma_data:
+    driver: local
+    name: bluejay-chroma-data
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  bluejay-network:
+    driver: bridge
+    name: bluejay-network
+
