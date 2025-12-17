@@ -19,6 +19,10 @@ import {
 } from './components';
 import type { ConnectionState } from './types';
 
+// Get backend URL from env (for production) or default to empty string (relative path for dev proxy)
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+const API_BASE = `${BACKEND_URL}/api`;
+
 /**
  * Main Application Shell
  * Handles initial connection state before LiveKitRoom is mounted
@@ -33,7 +37,7 @@ export const App = () => {
     disconnect: disconnectToken,
     error: tokenError,
   } = useConnection({
-    tokenEndpoint: '/api/token',
+    tokenEndpoint: `${API_BASE}/token`,
     autoReconnect: false,
   });
 
@@ -183,9 +187,20 @@ interface ConnectedContentProps {
 
 const ConnectedContent = ({ onDisconnect, roomName }: ConnectedContentProps) => {
   const roomConnectionState = useConnectionState();
-  const { ingest, isIngesting, documents } = useDocuments();
+  
+  // Get backend URL for documents hook
+  const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+  const API_BASE = `${BACKEND_URL}/api`;
+  
+  const { ingest, isIngesting, documents } = useDocuments({
+    ingestEndpoint: `${API_BASE}/ingest`,
+    listEndpoint: `${API_BASE}/documents`,
+  });
   const { send: sendChatMessage } = useChat();
-  const { messages: transcriptMessages, saveTranscript } = useTranscript({ roomName });
+  const { messages: transcriptMessages, saveTranscript } = useTranscript({ 
+    roomName,
+    saveEndpoint: `${API_BASE}/transcripts`,
+  });
 
   // Map LiveKit connection state to our type
   const connectionState: ConnectionState =

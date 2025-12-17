@@ -53,7 +53,7 @@ from rag.indexer import DocumentIndexer
 
 # Tavily for AI news search
 try:
-    from tavily import TavilyClient
+    from tavily import TavilyClient  # type: ignore
     TAVILY_AVAILABLE = True
 except ImportError:
     TAVILY_AVAILABLE = False

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Skull, Volume2, Mic, Brain, Radio } from 'lucide-react';
 import { useVoiceAssistant, BarVisualizer } from '@livekit/components-react';
 import { cn } from '../utils';
