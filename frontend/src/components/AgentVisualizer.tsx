@@ -27,15 +27,15 @@ function mapAgentState(livekitState: string | undefined): AgentState {
 function getStateIcon(state: AgentState) {
   switch (state) {
     case 'listening':
-      return <Mic className="w-6 h-6" />;
+      return <Mic className="w-4 h-4" />;
     case 'thinking':
-      return <Brain className="w-6 h-6" />;
+      return <Brain className="w-4 h-4" />;
     case 'speaking':
-      return <Volume2 className="w-6 h-6" />;
+      return <Volume2 className="w-4 h-4" />;
     case 'reading':
-      return <Radio className="w-6 h-6" />;
+      return <Radio className="w-4 h-4" />;
     default:
-      return <Skull className="w-6 h-6" />;
+      return <Skull className="w-4 h-4" />;
   }
 }
 
@@ -74,20 +74,21 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
   return (
     <div
       className={cn(
-        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4',
-        'flex flex-col items-center justify-center',
+        // Denser padding on mobile, overflow-hidden so content stays within border
+        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-2 sm:p-3',
+        'flex flex-col items-center overflow-hidden',
         'transition-all duration-300',
         className
       )}
     >
       {/* Header */}
-      <div className="w-full flex items-center gap-2 mb-4 pb-2 border-b border-terminator-border">
-        <span className="text-terminator-red text-xs font-mono tracking-wider">
+      <div className="w-full flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2 pb-1 sm:pb-2 border-b border-terminator-border flex-shrink-0">
+        <span className="text-terminator-red text-[8px] sm:text-[9px] font-mono tracking-wider">
           ▸ T-800 NEURAL NET
         </span>
         <span className="flex-1" />
         <span className={cn(
-          'text-xs font-mono tracking-wider transition-colors',
+          'text-[10px] sm:text-xs font-mono tracking-wider transition-colors',
           isActive ? 'text-terminator-cyan' : 'text-terminator-text-dim'
         )}>
           {state.toUpperCase()}
@@ -95,11 +96,11 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
       </div>
 
       {/* Main Visualizer Area */}
-      <div className="flex-1 w-full flex flex-col items-center justify-center min-h-[200px]">
-        {/* Skull Icon with Glow */}
+      <div className="w-full flex flex-col items-center justify-center flex-1 min-h-0">
+        {/* Skull Icon with Glow - smaller on mobile */}
         <div
           className={cn(
-            'relative w-24 h-24 md:w-32 md:h-32 rounded-full border-2 flex items-center justify-center mb-4',
+            'relative w-10 h-10 sm:w-14 sm:h-14 md:w-16 md:h-16 lg:w-20 lg:h-20 rounded-full border-2 flex items-center justify-center mb-1 sm:mb-2',
             'transition-all duration-500',
             isActive
               ? 'border-terminator-red shadow-glow-red'
@@ -115,14 +116,14 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
           
           <Skull
             className={cn(
-              'w-12 h-12 md:w-16 md:h-16 transition-all duration-300',
+              'w-5 h-5 sm:w-7 sm:h-7 md:w-8 md:h-8 lg:w-10 lg:h-10 transition-all duration-300',
               isActive ? 'text-terminator-red' : 'text-terminator-text-dim'
             )}
           />
         </div>
 
-        {/* Audio Visualizer Bars */}
-        <div ref={canvasRef} className="w-full max-w-xs h-16 flex items-center justify-center">
+        {/* Audio Visualizer Bars - shorter on mobile */}
+        <div ref={canvasRef} className="w-full max-w-[200px] sm:max-w-xs h-6 sm:h-8 lg:h-10 flex items-center justify-center flex-shrink-0">
           {audioTrack ? (
             <BarVisualizer
               state={livekitState}
@@ -135,12 +136,12 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
             />
           ) : (
             // Fallback static bars when no audio track
-            <div className="flex items-center justify-center gap-1 h-full">
+            <div className="flex items-center justify-center gap-0.5 sm:gap-1 h-full">
               {[...Array(7)].map((_, i) => (
                 <div
                   key={i}
                   className={cn(
-                    'w-2 rounded-sm transition-all duration-300',
+                    'w-1.5 sm:w-2 rounded-sm transition-all duration-300',
                     isActive ? 'bg-terminator-red' : 'bg-terminator-border'
                   )}
                   style={{
@@ -153,16 +154,18 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
           )}
         </div>
 
-        {/* Status Text */}
-        <div className="mt-4 flex items-center gap-2">
+        {/* Status Text - hidden on very small screens */}
+        <div className="mt-1 sm:mt-2 flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <div className={cn(
-            'p-1.5 rounded-full transition-colors',
+            'p-0.5 sm:p-1 rounded-full transition-colors',
             isActive ? 'bg-terminator-red/20 text-terminator-red' : 'bg-terminator-border text-terminator-text-dim'
           )}>
-            {getStateIcon(state)}
+            <div className="w-3 h-3 sm:w-4 sm:h-4 flex items-center justify-center">
+              {getStateIcon(state)}
+            </div>
           </div>
           <p className={cn(
-            'font-mono text-xs tracking-wider transition-colors',
+            'font-mono text-[8px] sm:text-[10px] tracking-wider transition-colors',
             isActive ? 'text-terminator-cyan text-glow-cyan' : 'text-terminator-text-dim'
           )}>
             {getStatusText(state)}
@@ -171,14 +174,14 @@ export const AgentVisualizer = ({ className }: AgentVisualizerProps) => {
       </div>
 
       {/* Footer - Connection indicator */}
-      <div className="w-full pt-2 mt-2 border-t border-terminator-border flex items-center justify-center">
-        <div className="flex items-center gap-2">
+      <div className="w-full pt-1 mt-1 border-t border-terminator-border flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2">
           <div className={cn(
-            'w-2 h-2 rounded-full transition-colors',
+            'w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors',
             isActive ? 'bg-terminator-cyan animate-pulse' : 'bg-terminator-text-dim'
           )} />
-          <span className="text-[10px] font-mono text-terminator-text-dim tracking-widest">
-            {isActive ? 'NEURAL NET ONLINE' : 'AWAITING CONNECTION'}
+          <span className="text-[8px] sm:text-[10px] font-mono text-terminator-text-dim tracking-widest">
+            {isActive ? 'ONLINE' : 'STANDBY'}
           </span>
         </div>
       </div>

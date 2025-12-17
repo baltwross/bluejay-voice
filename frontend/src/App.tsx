@@ -88,7 +88,7 @@ export const App = () => {
       />
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col h-screen p-4 md:p-6">
+      <div className="relative z-10 flex flex-col h-screen p-2 sm:p-4 md:p-6">
         {/* Header */}
         <Header connectionState={effectiveConnectionState} />
 
@@ -140,35 +140,35 @@ const Header = ({ connectionState }: HeaderProps) => {
   const isConnected = connectionState === 'connected';
 
   return (
-    <header className="flex items-center justify-between mb-6">
-      <div className="flex items-center gap-3">
-        <Skull className="w-8 h-8 text-terminator-red animate-pulse" />
+    <header className="flex items-center justify-between mb-3 sm:mb-4 md:mb-6">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <Skull className="w-6 h-6 sm:w-8 sm:h-8 text-terminator-red animate-pulse" />
         <div>
-          <h1 className="font-display text-xl md:text-2xl font-bold text-terminator-red text-glow-red tracking-wider">
+          <h1 className="font-display text-lg sm:text-xl md:text-2xl font-bold text-terminator-red text-glow-red tracking-wider">
             T-800
           </h1>
-          <p className="text-xs text-terminator-text-dim font-mono tracking-widest">
+          <p className="text-[10px] sm:text-xs text-terminator-text-dim font-mono tracking-widest hidden xs:block">
             CYBERDYNE SYSTEMS MODEL 101
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         {/* Connection Status */}
         <div
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded border',
+            'flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded border text-[10px] sm:text-xs',
             isConnected
               ? 'border-terminator-cyan/50 text-terminator-cyan'
               : 'border-terminator-border text-terminator-text-dim'
           )}
         >
           {isConnected ? (
-            <Wifi className="w-4 h-4 animate-pulse" />
+            <Wifi className="w-3 h-3 sm:w-4 sm:h-4 animate-pulse" />
           ) : (
-            <WifiOff className="w-4 h-4" />
+            <WifiOff className="w-3 h-3 sm:w-4 sm:h-4" />
           )}
-          <span className="text-xs uppercase tracking-wider font-mono">
+          <span className="uppercase tracking-wider font-mono">
             {connectionState}
           </span>
         </div>
@@ -252,16 +252,11 @@ const ConnectedContent = ({ onDisconnect, roomName }: ConnectedContentProps) => 
   );
 
   return (
-    <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-      {/* Left Panel - Transcript */}
-      <div className="lg:col-span-2 min-h-0">
-        <Transcript className="h-full" isConnected={connectionState === 'connected'} />
-      </div>
-
-      {/* Right Panel - Controls & Visualizer */}
-      <div className="flex flex-col gap-4 min-h-0 overflow-y-auto pr-2">
-        {/* Agent Visualizer */}
-        <AgentVisualizer className="flex-grow flex-shrink-0 min-h-[300px]" />
+    <main className="flex-1 flex flex-col lg:grid lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4 min-h-0 overflow-hidden">
+      {/* Mobile: Controls Column First (order-1), Desktop: Right Column (order-2) */}
+      <div className="flex flex-col gap-2 sm:gap-3 order-1 lg:order-2 flex-shrink-0 lg:flex-shrink lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+        {/* Agent Visualizer - Compact on mobile */}
+        <AgentVisualizer className="flex-shrink-0 min-h-[120px] h-[min(140px,20vh)] sm:min-h-[160px] sm:h-[min(180px,25vh)] lg:min-h-[200px] lg:h-[min(240px,30vh)]" />
 
         {/* Control Panel */}
         <ControlPanel
@@ -271,7 +266,22 @@ const ConnectedContent = ({ onDisconnect, roomName }: ConnectedContentProps) => 
           className="flex-shrink-0"
         />
 
-        {/* Input Console */}
+        {/* Input Console - Collapsible or smaller on mobile */}
+        <InputConsole
+          onSubmit={handleIngest}
+          disabled={isIngesting || connectionState !== 'connected'}
+          documents={documents}
+          className="flex-shrink-0 hidden sm:block lg:block"
+        />
+      </div>
+
+      {/* Mobile: Transcript Below (order-2), Desktop: Left Column (order-1, 2 cols) */}
+      <div className="lg:col-span-2 order-2 lg:order-1 min-h-0 flex flex-col flex-1">
+        <Transcript className="flex-1 min-h-0" isConnected={connectionState === 'connected'} />
+      </div>
+
+      {/* Mobile-only: Compact Input Console at bottom */}
+      <div className="order-3 sm:hidden flex-shrink-0">
         <InputConsole
           onSubmit={handleIngest}
           disabled={isIngesting || connectionState !== 'connected'}
@@ -298,42 +308,43 @@ const DisconnectedContent = ({
   onDisconnect,
 }: DisconnectedContentProps) => {
   return (
-    <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
-      {/* Left Panel - Placeholder */}
-      <div className="lg:col-span-2 hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4 flex flex-col">
-        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-terminator-border">
-          <span className="text-terminator-red text-xs font-mono tracking-wider">
-            ▸ TRANSCRIPT
-          </span>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-terminator-text-dim opacity-30" />
-            <p className="font-mono text-sm text-terminator-text-dim">NO ACTIVE SESSION</p>
-            <p className="text-xs mt-2 text-terminator-text-dim opacity-50">
-              Initialize connection to begin conversation
-            </p>
+    <main className="flex-1 flex flex-col lg:grid lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4 min-h-0 overflow-hidden">
+      {/* Mobile: Controls Column First (order-1), Desktop: Right Column (order-2) */}
+      <div className="flex flex-col gap-2 sm:gap-3 order-1 lg:order-2 flex-shrink-0 lg:flex-shrink lg:overflow-y-auto lg:min-h-0 lg:pr-2">
+        {/* Placeholder Visualizer - compact on mobile */}
+        <div className="hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-2 sm:p-3 flex-shrink-0 flex flex-col overflow-hidden min-h-[100px] h-[min(120px,18vh)] sm:min-h-[140px] sm:h-[min(160px,22vh)] lg:min-h-[180px] lg:h-[min(220px,28vh)]">
+          {/* Header */}
+          <div className="w-full flex items-center gap-2 mb-1 sm:mb-2 pb-1 sm:pb-2 border-b border-terminator-border flex-shrink-0">
+            <span className="text-terminator-red text-[9px] sm:text-xs font-mono tracking-wider">
+              ▸ T-800 NEURAL NET
+            </span>
+            <span className="flex-1" />
+            <span className="text-[10px] sm:text-xs font-mono tracking-wider text-terminator-text-dim">
+              IDLE
+            </span>
           </div>
-        </div>
-      </div>
-
-      {/* Right Panel */}
-      <div className="flex flex-col gap-4 overflow-y-auto min-h-0 pr-2">
-        {/* Placeholder Visualizer */}
-        <div className="hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4 flex-grow flex-shrink-0 flex items-center justify-center min-h-[300px]">
-          <div className="text-center">
+          {/* Content */}
+          <div className="flex-1 flex flex-col items-center justify-center min-h-0">
             <div
               className={cn(
-                'w-24 h-24 md:w-32 md:h-32 mx-auto rounded-full border-2 flex items-center justify-center',
+                'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 mx-auto rounded-full border-2 flex items-center justify-center',
                 'border-terminator-border'
               )}
             >
-              <Skull className="w-12 h-12 md:w-16 md:h-16 text-terminator-text-dim" />
+              <Skull className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-terminator-text-dim" />
             </div>
-            <p className="mt-4 font-display text-sm text-terminator-text-dim tracking-wider">
+            <p className="mt-1 sm:mt-2 font-mono text-[9px] sm:text-[10px] text-terminator-text-dim tracking-wider">
               STANDBY
             </p>
+          </div>
+          {/* Footer */}
+          <div className="w-full pt-1 mt-1 border-t border-terminator-border flex items-center justify-center flex-shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-terminator-text-dim" />
+              <span className="text-[8px] sm:text-[10px] font-mono text-terminator-text-dim tracking-widest">
+                AWAITING CONNECTION
+              </span>
+            </div>
           </div>
         </div>
 
@@ -345,8 +356,30 @@ const DisconnectedContent = ({
           className="flex-shrink-0"
         />
 
-        {/* Disabled Input Console */}
-        <InputConsole onSubmit={async () => {}} disabled className="flex-shrink-0" />
+        {/* Disabled Input Console - hidden on mobile when disconnected */}
+        <InputConsole onSubmit={async () => {}} disabled className="flex-shrink-0 hidden sm:block" />
+      </div>
+
+      {/* Mobile: Transcript Placeholder Below (order-2), Desktop: Left Column (order-1, 2 cols) */}
+      <div className="lg:col-span-2 order-2 lg:order-1 min-h-0 flex flex-col flex-1">
+        {/* Transcript Placeholder */}
+        <div className="hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-2 sm:p-3 lg:p-4 flex flex-col flex-1 min-h-0">
+          <div className="flex items-center gap-2 mb-2 sm:mb-3 lg:mb-4 pb-2 border-b border-terminator-border">
+            <span className="text-terminator-red text-[10px] sm:text-xs font-mono tracking-wider">
+              ▸ TRANSCRIPT
+            </span>
+          </div>
+
+          <div className="flex-1 flex items-center justify-center min-h-0">
+            <div className="text-center">
+              <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mx-auto mb-2 sm:mb-3 lg:mb-4 text-terminator-text-dim opacity-30" />
+              <p className="font-mono text-xs sm:text-sm text-terminator-text-dim">NO ACTIVE SESSION</p>
+              <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 text-terminator-text-dim opacity-50">
+                Initialize connection to begin conversation
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
@@ -357,11 +390,12 @@ const DisconnectedContent = ({
  */
 const Footer = () => {
   return (
-    <footer className="mt-4 pt-4 border-t border-terminator-border">
-      <div className="flex items-center justify-between text-xs font-mono text-terminator-text-dim">
-        <span>MISSION: PREVENT AUGUST 29, 2027</span>
+    <footer className="mt-2 sm:mt-3 lg:mt-4 pt-2 sm:pt-3 lg:pt-4 border-t border-terminator-border">
+      <div className="flex items-center justify-between text-[9px] sm:text-[10px] lg:text-xs font-mono text-terminator-text-dim">
+        <span className="hidden sm:inline">MISSION: PREVENT AUGUST 29, 2027</span>
+        <span className="sm:hidden">MISSION ACTIVE</span>
         <span className="text-terminator-red animate-blink">●</span>
-        <span>DAYS REMAINING: {calculateDaysRemaining()}</span>
+        <span>DAYS: {calculateDaysRemaining()}</span>
       </div>
     </footer>
   );

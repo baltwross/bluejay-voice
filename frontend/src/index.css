@@ -102,13 +102,21 @@ body {
   background: var(--color-red);
 }
 
-/* Button Base */
+/* Button Base - Mobile-friendly touch targets */
 .btn-hud {
-  @apply px-4 py-2 font-mono text-sm uppercase tracking-wider;
+  @apply px-2 sm:px-4 py-2 font-mono text-xs sm:text-sm uppercase tracking-wider;
   @apply border border-terminator-border bg-terminator-surface;
   @apply transition-all duration-200;
   @apply hover:border-terminator-red hover:shadow-glow-red;
   @apply active:scale-95;
+  /* Ensure minimum touch target on mobile */
+  min-height: 40px;
+}
+
+@media (min-width: 640px) {
+  .btn-hud {
+    min-height: auto;
+  }
 }
 
 .btn-hud-primary {
