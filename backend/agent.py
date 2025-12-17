@@ -1185,90 +1185,23 @@ class TerminatorAssistant(Agent):
             )
         
         # Actually update the TTS voice using update_options
-        # #region agent log
-        import json as _json_log
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
-                "location": "agent.py:switch_voice:before_update",
-                "message": "About to update TTS voice",
-                "data": {
-                    "tts_available": self._tts is not None,
-                    "target_voice_id": voice_config["voice_id"],
-                    "mode_requested": mode_lower,
-                    "voice_mode_set": self._voice_mode.value
-                },
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
-        
         if self._tts is not None:
             try:
                 self._tts.update_options(voice_id=voice_config["voice_id"])
                 logger.info(f"[Tool] TTS voice_id updated to {voice_config['voice_id']}")
-                # #region agent log
-                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                    _f.write(_json_log.dumps({
-                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
-                        "location": "agent.py:switch_voice:update_success",
-                        "message": "TTS update_options succeeded",
-                        "data": {"voice_id": voice_config["voice_id"]},
-                        "timestamp": int(time.time() * 1000)
-                    }) + "\n")
-                # #endregion
             except Exception as e:
                 logger.error(f"[Tool] Failed to update TTS voice: {e}")
-                # #region agent log
-                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                    _f.write(_json_log.dumps({
-                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
-                        "location": "agent.py:switch_voice:update_failed",
-                        "message": "TTS update_options FAILED - trying fallback",
-                        "data": {"voice_id": voice_config["voice_id"], "error": str(e)},
-                        "timestamp": int(time.time() * 1000)
-                    }) + "\n")
-                # #endregion
                 # Try fallback voice if primary fails
                 try:
                     logger.info(f"[Tool] Attempting fallback voice: {FALLBACK_VOICE_ID}")
                     self._tts.update_options(voice_id=FALLBACK_VOICE_ID)
                     logger.info("[Tool] Fallback voice applied successfully")
-                    # #region agent log
-                    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                        _f.write(_json_log.dumps({
-                            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
-                            "location": "agent.py:switch_voice:fallback_applied",
-                            "message": "FALLBACK voice applied",
-                            "data": {"fallback_voice_id": FALLBACK_VOICE_ID},
-                            "timestamp": int(time.time() * 1000)
-                        }) + "\n")
-                    # #endregion
                     response += " Note: Using backup voice due to primary voice unavailability."
                 except Exception as fallback_error:
                     logger.error(f"[Tool] Fallback voice also failed: {fallback_error}")
-                    # #region agent log
-                    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                        _f.write(_json_log.dumps({
-                            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,D",
-                            "location": "agent.py:switch_voice:fallback_failed",
-                            "message": "FALLBACK also FAILED",
-                            "data": {"error": str(fallback_error)},
-                            "timestamp": int(time.time() * 1000)
-                        }) + "\n")
-                    # #endregion
                     return f"Voice switch failed. The voice mode is set but audio may not work correctly. Error: {e}"
         else:
             logger.warning("[Tool] TTS not available for voice switching")
-            # #region agent log
-            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                _f.write(_json_log.dumps({
-                    "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
-                    "location": "agent.py:switch_voice:no_tts",
-                    "message": "TTS is None - cannot switch voice",
-                    "data": {},
-                    "timestamp": int(time.time() * 1000)
-                }) + "\n")
-            # #endregion
         
         return response
     
@@ -1634,19 +1567,6 @@ class TerminatorAssistant(Agent):
             turn_ctx: The current chat context.
             new_message: The user's message.
         """
-        # #region agent log
-        import json as _json_log
-        _hook_start = time.time()
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
-                "location": "agent.py:on_user_turn_completed:entry",
-                "message": "Hook started",
-                "data": {"user_text": new_message.text_content[:100] if new_message.text_content else None},
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
-        
         user_text = new_message.text_content
         if not user_text:
             return
@@ -1709,40 +1629,11 @@ class TerminatorAssistant(Agent):
         # STANDARD RAG RETRIEVAL
         # =================================================================
         # Check if we should attempt RAG retrieval for questions
-        _should_rag = should_trigger_rag(user_text)
-        
-        # #region agent log
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
-                "location": "agent.py:on_user_turn_completed:rag_check",
-                "message": "RAG trigger check",
-                "data": {"should_trigger": _should_rag, "user_text": user_text[:50]},
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
-        
-        if _should_rag:
+        if should_trigger_rag(user_text):
             logger.info(f"RAG triggered for: {user_text[:50]}...")
-            
-            # #region agent log
-            _rag_start = time.time()
-            # #endregion
             
             try:
                 rag_context = await self._retrieve_context(user_text)
-                
-                # #region agent log
-                _rag_duration = (time.time() - _rag_start) * 1000
-                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                    _f.write(_json_log.dumps({
-                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
-                        "location": "agent.py:on_user_turn_completed:rag_done",
-                        "message": "RAG retrieval completed",
-                        "data": {"duration_ms": _rag_duration, "has_context": bool(rag_context)},
-                        "timestamp": int(time.time() * 1000)
-                    }) + "\n")
-                # #endregion
                 
                 if rag_context:
                     # Inject RAG context as a hidden assistant message
@@ -1754,18 +1645,6 @@ class TerminatorAssistant(Agent):
             except Exception as e:
                 logger.error(f"RAG retrieval failed: {e}")
                 # Continue without RAG context - don't block the conversation
-        
-        # #region agent log
-        _hook_duration = (time.time() - _hook_start) * 1000
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
-                "location": "agent.py:on_user_turn_completed:exit",
-                "message": "Hook completed",
-                "data": {"total_duration_ms": _hook_duration},
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
     
     async def _retrieve_context(self, query: str) -> str | None:
         """
@@ -1851,37 +1730,9 @@ def create_agent_session(
         verbosity="low",
         max_completion_tokens=int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "220")),
     )
-    # #region agent log
-    import json as _json_log
-    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-        _f.write(_json_log.dumps({
-            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B",
-            "location": "agent.py:create_agent_session:llm",
-            "message": "Configuring LLM",
-            "data": {"model": config.openai.llm_model},
-            "timestamp": int(time.time() * 1000)
-        }) + "\n")
-    # #endregion
-    
-    llm = openai.LLM(model=config.openai.llm_model)
     
     # Configure ElevenLabs TTS with voice from mode configuration
     # API key is read automatically from ELEVEN_API_KEY env var
-    # #region agent log
-    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-        _f.write(_json_log.dumps({
-            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B,E",
-            "location": "agent.py:create_agent_session:tts_init_before",
-            "message": "About to initialize TTS with voice_id",
-            "data": {
-                "requested_voice_id": voice_config["voice_id"],
-                "voice_mode": voice_mode.value,
-                "model": voice_config["model"],
-                "all_voice_configs": {k.value: v["voice_id"] for k, v in VOICE_CONFIGS.items()}
-            },
-            "timestamp": int(time.time() * 1000)
-        }) + "\n")
-    # #endregion
     tts = elevenlabs.TTS(
         voice_id=voice_config["voice_id"],
         model=voice_config["model"],
@@ -1890,22 +1741,6 @@ def create_agent_session(
         enable_logging=config.elevenlabs.enable_logging,
         sync_alignment=config.elevenlabs.sync_alignment,
     )
-    # #region agent log
-    # Check what voice_id is actually set after initialization
-    actual_voice_id = getattr(getattr(tts, '_opts', None), 'voice_id', 'UNKNOWN') if hasattr(tts, '_opts') else 'NO_OPTS'
-    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-        _f.write(_json_log.dumps({
-            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B,E",
-            "location": "agent.py:create_agent_session:tts_init_after",
-            "message": "TTS initialized - checking actual voice_id",
-            "data": {
-                "requested_voice_id": voice_config["voice_id"],
-                "actual_voice_id": actual_voice_id,
-                "match": voice_config["voice_id"] == actual_voice_id
-            },
-            "timestamp": int(time.time() * 1000)
-        }) + "\n")
-    # #endregion
     
     # Configure Silero VAD for interruptibility
     # Default settings work well for reading mode - LiveKit's built-in VAD
@@ -1948,45 +1783,6 @@ def create_agent_session(
         min_interruption_duration=0.25 if low_latency_mode else 0.5,
         false_interruption_timeout=0.8 if low_latency_mode else 2.0,
     )
-    # #region agent log
-    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-        _f.write(_json_log.dumps({
-            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "E",
-            "location": "agent.py:create_agent_session:session",
-            "message": "Creating AgentSession with preemptive_generation",
-            "data": {"preemptive_generation": True},
-            "timestamp": int(time.time() * 1000)
-        }) + "\n")
-    # #endregion
-    
-    try:
-        session = AgentSession(
-            stt=stt,
-            llm=llm,
-            tts=tts,
-            vad=vad,
-            turn_detection=turn_detection,
-            preemptive_generation=True,  # Enable for lower latency
-        )
-    except TypeError as e:
-        # #region agent log
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "E",
-                "location": "agent.py:create_agent_session:session_fallback",
-                "message": "preemptive_generation not supported, falling back",
-                "data": {"error": str(e)},
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
-        # Fallback if preemptive_generation is not supported
-        session = AgentSession(
-            stt=stt,
-            llm=llm,
-            tts=tts,
-            vad=vad,
-            turn_detection=turn_detection,
-        )
     
     logger.info(
         f"AgentSession created with: "
@@ -2044,11 +1840,6 @@ async def entrypoint(ctx: agents.JobContext):
     @session.on("metrics_collected")
     def _on_metrics_collected(ev: MetricsCollectedEvent):
         """Log and collect metrics for performance monitoring."""
-        # #region agent log
-        import json as _json_log
-        _metrics_start = time.time()
-        # #endregion
-        
         # Log metrics for debugging
         metrics.log_metrics(ev.metrics)
         
@@ -2060,34 +1851,12 @@ async def entrypoint(ctx: agents.JobContext):
             if hasattr(metric, 'ttft') and metric.ttft is not None:
                 # LLM Time-To-First-Token
                 logger.debug(f"[Metrics] LLM TTFT: {metric.ttft:.3f}s")
-                # #region agent log
-                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-                    _f.write(_json_log.dumps({
-                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D,B",
-                        "location": "agent.py:metrics:llm_ttft",
-                        "message": "LLM TTFT metric",
-                        "data": {"ttft_seconds": metric.ttft},
-                        "timestamp": int(time.time() * 1000)
-                    }) + "\n")
-                # #endregion
             if hasattr(metric, 'ttfb') and metric.ttfb is not None:
                 # TTS Time-To-First-Byte
                 logger.debug(f"[Metrics] TTS TTFB: {metric.ttfb:.3f}s")
             if hasattr(metric, 'end_of_utterance_delay') and metric.end_of_utterance_delay is not None:
                 # End-of-utterance delay
                 logger.debug(f"[Metrics] EOU Delay: {metric.end_of_utterance_delay:.3f}s")
-        
-        # #region agent log
-        _metrics_duration = (time.time() - _metrics_start) * 1000
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D",
-                "location": "agent.py:metrics:done",
-                "message": "Metrics handler completed",
-                "data": {"duration_ms": _metrics_duration},
-                "timestamp": int(time.time() * 1000)
-            }) + "\n")
-        # #endregion
     
     async def log_usage_summary():
         """Log usage summary at session end."""

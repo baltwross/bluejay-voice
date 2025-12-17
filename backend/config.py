@@ -121,6 +121,9 @@ class RAGConfig:
     chunk_size: int = 1000
     chunk_overlap: int = 200
     
+    # Embedding settings
+    embedding_model: str = "text-embedding-3-small"
+    
     # Vector store settings
     collection_name: str = "bluejay_knowledge_base"
     persist_directory: str = field(default_factory=lambda: str(
@@ -129,6 +132,10 @@ class RAGConfig:
     
     # Retrieval settings
     retrieval_k: int = 4  # Number of documents to retrieve
+    retrieval_score_threshold: float = 0.0  # Minimum similarity score
+    
+    # OpenAI API key (from environment)
+    openai_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     
     def __post_init__(self) -> None:
         # Ensure persist directory exists

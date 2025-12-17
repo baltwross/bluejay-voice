@@ -1,0 +1,67 @@
+# =============================================================================
+# Docker Build Ignore File
+# =============================================================================
+# Files and directories to exclude from Docker build context
+# =============================================================================
+
+# Python virtual environment (we create a new one in Docker)
+venv/
+.venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Test files (not needed in production)
+test_*.py
+tests/
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Documentation (not needed in production image)
+*.md
+docs/
+
+# Local development files
+*.log
+*.tmp
+.env.local
+.env.development
+
+# ChromaDB local data (should be mounted as volume in production)
+chroma_db/
+
+# Cursor IDE files
+.cursor/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Reading state file (will be created at runtime)
+.reading_state.json
+
+# Logs directory
+KMS/
+logs/
+

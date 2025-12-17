@@ -10,88 +10,146 @@ The **Bluejay Terminator** is a T-800 series android sent back from August 2027�
 
 **The Mission:** Prevent August 29, 2027. Time remaining: 622 days.
 
-It allows users to:
-1.  **Stay Ahead**: Discuss the latest AI tools for software engineering (Claude Code, Cursor Composer, GitHub Copilot Workspace, etc.).
-2.  **Master Documentation**: Upload tool documentation (PDFs, Webpages, YouTube Videos) and have the Terminator explain how to use them for maximum productivity.
-3.  **Real-time Learning**: Low-latency voice conversation with a stoic, mission-focused personality.
+### Core Features
+
+1. **Stay Ahead**: Discuss the latest AI tools for software engineering (Claude Code, Cursor Composer, GitHub Copilot Workspace, etc.).
+2. **Master Documentation**: Upload tool documentation (PDFs, Webpages, YouTube Videos) and have the Terminator explain how to use them for maximum productivity.
+3. **Real-time Learning**: Low-latency voice conversation with a stoic, mission-focused T-800 personality.
+4. **AI News Feed**: Get the latest news on AI tools for engineering via Tavily search integration.
+5. **Document Reading**: Have the agent read documents aloud with full interruptibility and resume capability.
+
+## Quick Start
+
+### Local Development
+
+```bash
+# Clone the repository
+git clone <repo_url>
+cd bluejay-voice
+
+# Start all services (token server, agent, frontend)
+./scripts/dev.sh
+```
+
+### Docker (Local)
+
+```bash
+# Copy environment template
+cp env.docker.template .env
+# Edit .env with your API keys
+
+# Start all services
+docker-compose up --build
+
+# Access the app at http://localhost:5173
+```
+
+### AWS Deployment
+
+```bash
+# Setup secrets in AWS Secrets Manager
+./scripts/setup-secrets.sh --from-env
+
+# Build and deploy to AWS App Runner
+./scripts/deploy-aws.sh
+
+# Deploy frontend to S3/CloudFront
+./scripts/deploy-aws.sh --frontend-only
+```
+
+See [docs/aws_deployment.md](docs/aws_deployment.md) for detailed AWS deployment instructions.
 
 ## System Architecture
 
-### 1. Frontend (React + Vite)
-- **Framework**: React 18 with TypeScript and Vite.
-- **Styling**: Tailwind CSS with custom Terminator HUD theme.
-- **Core Features**:
-    - WebRTC connection via `livekit-client`.
-    - Real-time transcript display.
-    - Audio visualization.
-    - Document upload & URL input interface.
-- **Deployment**: AWS S3 + CloudFront (static hosting).
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        User (Browser)                            │
+│                    WebRTC Audio/Video                           │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────────┐
+│                      LiveKit Cloud                              │
+│                (WebRTC Infrastructure)                          │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ WebSocket
+┌───────────────────────────▼─────────────────────────────────────┐
+│                    Python Backend                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │  Deepgram   │  │   OpenAI    │  │      ElevenLabs         │ │
+│  │    STT      │──│  gpt-4o-mini│──│   TTS (Arnold Voice)    │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+│                         │                                       │
+│  ┌─────────────────────▼────────────────────────────────────┐  │
+│  │               RAG Engine (LangChain + ChromaDB)           │  │
+│  │  • PDF, YouTube, Web ingestion                            │  │
+│  │  • Hybrid search (semantic + keyword)                     │  │
+│  │  • Document reading with position tracking                │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │               External Tools                              │  │
+│  │  • Tavily AI News Search                                  │  │
+│  │  • Document reading controls                              │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-### 2. Backend (Python)
-- **Framework**: LiveKit Agents (Python SDK).
-- **Voice Pipeline**:
-    - **STT (Speech-to-Text)**: Deepgram (for speed/interruptibility).
-    - **LLM**: OpenAI `gpt-5-nano-2025-08-07` (for reasoning).
-    - **TTS (Text-to-Speech)**: ElevenLabs (custom Arnold voice, Voice ID: `8DGMp3sPQNZOuCfSIxxE`).
-    - **VAD**: Silero (for natural interruption handling).
-- **RAG Engine**:
-    - **Framework**: LangChain.
-    - **Vector Store**: ChromaDB (persistent storage).
-    - **Ingestion**: Custom pipeline for PDF, YouTube, and Web scraping.
-- **Deployment**: AWS App Runner or ECS Fargate (Dockerized).
+### Components
 
-### 3. AWS Deployment Strategy
-- **Backend Agent**: Docker container on AWS App Runner or ECS Fargate
-- **Environment Variables**: AWS Secrets Manager
-- **Vector Store**: ChromaDB with persistent volume (EFS) or S3 backup
-- **Frontend**: S3 + CloudFront (static hosting)
-- **LiveKit**: LiveKit Cloud (external SaaS)
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Frontend** | React 18 + Vite + Tailwind | WebRTC client, transcript display, document upload |
+| **Backend Agent** | LiveKit Agents (Python) | Voice pipeline orchestration |
+| **STT** | Deepgram | Real-time speech-to-text |
+| **LLM** | OpenAI gpt-4o-mini | Conversation and reasoning |
+| **TTS** | ElevenLabs | Arnold-style voice synthesis |
+| **VAD** | Silero | Voice activity detection for interruptions |
+| **RAG** | LangChain + ChromaDB | Document retrieval and Q&A |
+| **News** | Tavily | AI engineering news search |
 
-### 4. Data Flow
-1.  **Ingestion**: User uploads file/link → Backend processes & chunks → Embeddings → ChromaDB.
-2.  **Retrieval**: Agent identifies need for external info → Queries Vector Store → Synthesizes answer.
+## Prerequisites
 
-## Setup Instructions
+- **Python 3.9+**
+- **Node.js 18+**
+- **Docker** (optional, for containerized deployment)
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- LiveKit Cloud Account
-- OpenAI API Key
-- ElevenLabs API Key
-- Deepgram API Key
+### API Keys Required
 
-### Installation
+| Service | Environment Variable | Purpose |
+|---------|---------------------|---------|
+| LiveKit Cloud | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | WebRTC infrastructure |
+| OpenAI | `OPENAI_API_KEY` | LLM and embeddings |
+| ElevenLabs | `ELEVEN_API_KEY` | Text-to-speech |
+| Deepgram | `DEEPGRAM_API_KEY` | Speech-to-text |
+| Tavily | `TAVILY_API_KEY` | News search (optional) |
 
-1.  **Clone the repo**
-    ```bash
-    git clone <repo_url>
-    cd bluejay-voice
-    ```
+## Installation
 
-2.  **Backend Setup**
-    ```bash
-    cd backend
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    cp env.template .env
-    # Edit .env with your API keys
-    ```
+### 1. Backend Setup
 
-3.  **Frontend Setup**
-    ```bash
-    cd frontend
-    npm install
-    ```
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-### Running the Application
+# Copy environment template and add your API keys
+cp env.template .env
+# Edit .env with your API keys
+```
+
+### 2. Frontend Setup
+
+```bash
+cd frontend
+npm install
+```
+
+### 3. Running the Application
 
 **Option 1: Quick Start (All Services)**
 ```bash
 ./scripts/dev.sh
 ```
-This starts the token server, LiveKit agent, and frontend dev server together.
 
 **Option 2: Manual Start (Separate Terminals)**
 
@@ -117,11 +175,54 @@ npm run dev
 
 **Access the Application:**
 - Frontend: http://localhost:5173
-- Token API: http://localhost:8080
+- Token API: http://localhost:8080/api/info
 
-### Frontend Architecture
+## Docker Usage
 
-The React frontend (`frontend/`) includes:
+### Development with Docker Compose
+
+```bash
+# Copy environment template
+cp env.docker.template .env
+# Edit .env with your API keys
+
+# Build and start all services
+docker-compose up --build
+
+# Stop services
+docker-compose down
+
+# View logs
+docker-compose logs -f backend
+```
+
+### Production Build
+
+```bash
+# Build production images
+./scripts/build.sh
+
+# Or manually:
+docker build -t bluejay-terminator-agent ./backend
+docker build --target production -t bluejay-terminator-frontend ./frontend
+```
+
+## API Endpoints
+
+The token server provides these HTTP endpoints:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/info` | GET | API documentation and endpoint list |
+| `/health` | GET | Health check with component status |
+| `/api/token` | POST | Generate LiveKit access token |
+| `/api/ingest` | POST | Ingest URL content (YouTube, web, PDF) |
+| `/api/ingest/file` | POST | Upload and ingest file |
+| `/api/documents` | GET | List all ingested documents |
+| `/api/newsfeed` | GET | Get AI tools news feed |
+| `/api/transcripts` | POST | Save conversation transcript |
+
+## Frontend Components
 
 | Component | Purpose |
 |-----------|---------|
@@ -130,52 +231,144 @@ The React frontend (`frontend/`) includes:
 | `ControlPanel` | Start/end call, mic toggle, connection status |
 | `InputConsole` | "Share with Terminator" URL/file upload interface |
 
-**Key Hooks:**
-- `useConnection` - Manages token fetching and connection state
-- `useAgent` - LiveKit room connection and agent detection
-- `useDocuments` - Document ingestion and listing
+## Voice Agent Features
 
-**State Flow:**
-1. User clicks "Initialize Connection"
-2. Frontend fetches token from `/api/token`
-3. LiveKitRoom connects with token
-4. Agent joins the room automatically
-5. Audio streaming begins via WebRTC
+### RAG (Retrieval-Augmented Generation)
+
+The agent can ingest and answer questions about:
+- **PDF documents** - Technical documentation, papers
+- **YouTube videos** - Tutorial transcripts
+- **Web articles** - Blog posts, news articles
+- **Word documents** - .docx files
+
+### Document Reading Mode
+
+The agent can read documents aloud with:
+- **Interruptibility** - Ask questions mid-reading
+- **Resume capability** - Continue from where you left off
+- **Position tracking** - Knows your progress percentage
+
+### AI News Search
+
+Ask about the latest AI tools:
+- "What's happening in AI today?"
+- "Tell me about the latest Claude updates"
+- "What new coding assistants are available?"
+
+## Project Structure
+
+```
+bluejay-voice/
+├── backend/
+│   ├── agent.py           # Main LiveKit agent
+│   ├── token_server.py    # FastAPI token server
+│   ├── config.py          # Centralized configuration
+│   ├── prompts.py         # T-800 personality prompts
+│   ├── Dockerfile         # Production container
+│   └── rag/
+│       ├── indexer.py     # Document ingestion
+│       ├── retriever.py   # Document retrieval
+│       └── loaders.py     # Content loaders
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx        # Main application
+│   │   ├── components/    # UI components
+│   │   └── hooks/         # React hooks
+│   ├── Dockerfile         # Multi-stage build
+│   └── nginx.conf         # Production server config
+├── infrastructure/
+│   └── cloudformation.yaml # AWS ECS deployment
+├── scripts/
+│   ├── dev.sh             # Development startup
+│   ├── build.sh           # Docker build script
+│   ├── deploy-aws.sh      # AWS deployment
+│   └── setup-secrets.sh   # AWS secrets setup
+├── docs/
+│   ├── aws_deployment.md  # Detailed AWS guide
+│   ├── technical_design.md # Architecture details
+│   └── product_requirements.md # Feature specs
+├── docker-compose.yml     # Local development
+└── docker-compose.prod.yml # Production config
+```
 
 ## Design Decisions & Trade-offs
 
-### RAG Framework
-- **LangChain**: Chosen for its robust ecosystem, flexible chains, and extensive integration support for RAG pipelines. Provides excellent document loaders for PDF, YouTube, and web content.
-
-### Vector Store
-- **ChromaDB**: Local, file-based vector store for development. In production, uses persistent volumes (EFS) or S3 snapshots. Chosen for simplicity and no external database dependencies.
-
 ### Voice Pipeline
-- **Deepgram STT**: Selected for lower latency (~300ms) compared to Whisper, essential for natural conversation flow.
-- **ElevenLabs TTS**: Custom Arnold Schwarzenegger voice (Voice ID: `8DGMp3sPQNZOuCfSIxxE`) for authentic T-800 personality.
-- **Silero VAD**: Enables natural interruption during agent speech - critical for reading mode.
+- **Deepgram STT**: Lower latency (~300ms) vs Whisper
+- **ElevenLabs TTS**: Custom Arnold voice (ID: `8DGMp3sPQNZOuCfSIxxE`)
+- **Silero VAD**: Enables natural interruption during agent speech
 
-### AWS Deployment
-- **App Runner vs ECS Fargate**: App Runner chosen for simpler deployment and automatic scaling. ECS Fargate provides more control but requires VPC/ALB setup.
-- **Persistent Storage**: ChromaDB data stored on EFS mount or S3 with periodic snapshots.
-- **Secrets Management**: All API keys stored in AWS Secrets Manager, injected as environment variables.
+### RAG Framework
+- **LangChain**: Robust ecosystem, flexible chains, extensive integrations
+- **ChromaDB**: Local, file-based for development; EFS for production
+- **Hybrid Search**: Combines semantic embeddings with BM25 keyword search
 
 ### Chunking Strategy
-- **Chunk Size**: 1000 tokens with 200 token overlap for optimal retrieval accuracy.
-- **Embedding Model**: `text-embedding-3-large` (OpenAI) - best quality embeddings, recommended by LangChain for RAG.
+- **Chunk Size**: 1000 tokens with 200 token overlap
+- **Embedding Model**: OpenAI `text-embedding-3-small` for efficiency
 
-## Local Development vs Production
+### AWS Deployment
+- **App Runner**: Simple deployment, automatic scaling (recommended)
+- **ECS Fargate**: More control, EFS support for persistence
+- **Secrets Manager**: Secure API key storage
 
-| Component | Local | Production (AWS) |
-|-----------|-------|------------------|
-| Backend Agent | `python agent.py dev` | Docker on App Runner/Fargate |
-| Frontend | `npm run dev` (localhost:5173) | S3 + CloudFront |
-| Vector DB | `./chroma_db/` directory | EFS mount or S3 |
-| Secrets | `.env` file | AWS Secrets Manager |
-| LiveKit | LiveKit Cloud | LiveKit Cloud |
+## Deployment Comparison
+
+| Component | Local | Docker | AWS |
+|-----------|-------|--------|-----|
+| Backend | `python agent.py dev` | `docker-compose up` | App Runner/ECS |
+| Frontend | `npm run dev` | Port 5173 | S3 + CloudFront |
+| Vector DB | `./chroma_db/` | Docker volume | EFS mount |
+| Secrets | `.env` file | `.env` file | Secrets Manager |
+
+## Testing
+
+```bash
+# Backend tests
+cd backend
+source venv/bin/activate
+pytest
+
+# API endpoint tests
+python -m pytest tests/test_api_endpoints.py -v
+```
+
+## Troubleshooting
+
+### Agent won't connect
+1. Check API keys in `.env`
+2. Verify LiveKit URL format: `wss://your-project.livekit.cloud`
+3. Check CloudWatch/console logs for errors
+
+### High latency
+1. Ensure backend is in same region as LiveKit
+2. Try disabling noise cancellation: `ENABLE_NOISE_CANCELLATION=false`
+3. Check network connectivity
+
+### RAG not returning results
+1. Verify documents are ingested: `GET /api/documents`
+2. Check ChromaDB persistence directory
+3. Review ingestion logs
+
+## AI Tools Used
+
+This project was built with assistance from:
+- **Claude (Anthropic)** - Architecture design and code generation
+- **Cursor** - IDE with AI-powered development
+- **Context7** - Documentation lookup
+- **Tavily** - Web search integration
 
 ## Future Improvements
-- Persistent user conversation history across sessions.
-- Multi-document comparison queries.
-- Voice emotion detection for user frustration handling.
 
+- [ ] Voice emotion detection for user frustration handling
+- [ ] Multi-document comparison queries
+- [ ] Persistent conversation history
+- [ ] Custom voice training
+
+## License
+
+MIT License - See LICENSE file for details.
+
+## Contact
+
+For questions about this take-home interview submission, contact the Bluejay team.
