@@ -4,11 +4,13 @@ Supports: PDF, YouTube, Web URLs, and text files.
 """
 import re
 import logging
-from typing import List, Optional, Literal
+import urllib.request
+from typing import List, Optional, Literal, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     PyPDFLoader,
@@ -42,6 +44,60 @@ class DocumentLoaderFactory:
         r"(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]+)",
         r"(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]+)",
     ]
+    
+    @staticmethod
+    def _fetch_page_title(url: str) -> Optional[str]:
+        """
+        Fetch the <title> tag from a URL using BeautifulSoup.
+        Works for most web pages including YouTube.
+        """
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as response:
+                html = response.read().decode('utf-8', errors='ignore')
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Try <title> tag first
+                if soup.title and soup.title.string:
+                    title = soup.title.string.strip()
+                    # Clean up common suffixes
+                    title = re.sub(r'\s*[-|–]\s*YouTube\s*$', '', title)
+                    title = re.sub(r'\s*[-|–]\s*[^-|–]+$', '', title)  # Remove site name suffix
+                    if title:
+                        return title
+                
+                # Try Open Graph title
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    return og_title.get('content').strip()
+                
+                # Try Twitter title
+                twitter_title = soup.find('meta', attrs={'name': 'twitter:title'})
+                if twitter_title and twitter_title.get('content'):
+                    return twitter_title.get('content').strip()
+                    
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to fetch page title from {url}: {e}")
+            return None
+    
+    @staticmethod
+    def _extract_youtube_video_id(url: str) -> Optional[str]:
+        """Extract video ID from a YouTube URL."""
+        patterns = [
+            r"(?:v=|/)([a-zA-Z0-9_-]{11})(?:[&?/]|$)",
+            r"youtu\.be/([a-zA-Z0-9_-]{11})",
+            r"embed/([a-zA-Z0-9_-]{11})",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
     
     @classmethod
     def detect_source_type(cls, source: str) -> SourceType:
@@ -145,8 +201,18 @@ class DocumentLoaderFactory:
     
     @classmethod
     def _load_youtube(cls, url: str) -> tuple[List[Document], Optional[str]]:
-        """Load YouTube video transcript."""
+        """Load YouTube video transcript with robust title extraction."""
+        title = None
+        documents = []
+        
         try:
+            # First, try to get title by scraping the page (most reliable)
+            logger.info(f"Fetching YouTube video title from page: {url}")
+            title = cls._fetch_page_title(url)
+            if title:
+                logger.info(f"Extracted title from page: {title}")
+            
+            # Load transcript using YoutubeLoader
             loader = YoutubeLoader.from_youtube_url(
                 url,
                 add_video_info=True,
@@ -155,12 +221,19 @@ class DocumentLoaderFactory:
             )
             documents = loader.load()
             
-            # Extract title from video info
-            title = None
-            if documents and "title" in documents[0].metadata:
-                title = documents[0].metadata["title"]
+            # If we didn't get title from page, try from loader metadata
+            if not title and documents and "title" in documents[0].metadata:
+                loader_title = documents[0].metadata.get("title")
+                if loader_title and loader_title not in ["Untitled", "Unknown", ""]:
+                    title = loader_title
+                    logger.info(f"Got title from YoutubeLoader metadata: {title}")
             
-            logger.info(f"Loaded transcript from YouTube video: {title}")
+            # Update document metadata with the title
+            if title:
+                for doc in documents:
+                    doc.metadata["title"] = title
+            
+            logger.info(f"Loaded transcript from YouTube video: {title or 'Unknown'}")
             return documents, title
             
         except Exception as e:
@@ -170,8 +243,16 @@ class DocumentLoaderFactory:
     @classmethod
     def _load_web(cls, url: str) -> tuple[List[Document], Optional[str]]:
         """Load web page content using Trafilatura for better extraction."""
+        title = None
+        
         try:
-            # First try Trafilatura for cleaner extraction
+            # First, try to get title by scraping the page (most reliable)
+            logger.info(f"Fetching web page title: {url}")
+            title = cls._fetch_page_title(url)
+            if title:
+                logger.info(f"Extracted title from page: {title}")
+            
+            # Try Trafilatura for cleaner content extraction
             downloaded = trafilatura.fetch_url(url)
             if downloaded:
                 text = trafilatura.extract(
@@ -183,7 +264,11 @@ class DocumentLoaderFactory:
                 metadata = trafilatura.extract_metadata(downloaded)
                 
                 if text:
-                    title = metadata.title if metadata else None
+                    # Use Trafilatura title as fallback if we didn't get one
+                    if not title and metadata and metadata.title:
+                        title = metadata.title
+                        logger.info(f"Got title from Trafilatura metadata: {title}")
+                    
                     doc = Document(
                         page_content=text,
                         metadata={
@@ -191,7 +276,7 @@ class DocumentLoaderFactory:
                             "title": title or url,
                         }
                     )
-                    logger.info(f"Loaded web content via Trafilatura: {title}")
+                    logger.info(f"Loaded web content via Trafilatura: {title or 'Unknown'}")
                     return [doc], title
             
             # Fallback to WebBaseLoader
@@ -199,15 +284,13 @@ class DocumentLoaderFactory:
             loader = WebBaseLoader(web_paths=[url])
             documents = loader.load()
             
-            # Try to extract title from content
-            title = url  # Default to URL
-            if documents and documents[0].page_content:
-                # Try to find title in first 500 chars
+            # If still no title, try to find it in the first line of content
+            if not title and documents and documents[0].page_content:
                 first_line = documents[0].page_content.strip().split('\n')[0][:200]
-                if first_line:
+                if first_line and len(first_line) > 5:
                     title = first_line
             
-            logger.info(f"Loaded {len(documents)} documents from web")
+            logger.info(f"Loaded {len(documents)} documents from web: {title or 'Unknown'}")
             return documents, title
             
         except Exception as e:

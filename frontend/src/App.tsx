@@ -171,7 +171,7 @@ interface ConnectedContentProps {
 
 const ConnectedContent = ({ onDisconnect }: ConnectedContentProps) => {
   const roomConnectionState = useConnectionState();
-  const { ingest, isIngesting } = useDocuments();
+  const { ingest, isIngesting, documents } = useDocuments();
 
   // Map LiveKit connection state to our type
   const connectionState: ConnectionState =
@@ -204,21 +204,24 @@ const ConnectedContent = ({ onDisconnect }: ConnectedContentProps) => {
       </div>
 
       {/* Right Panel - Controls & Visualizer */}
-      <div className="flex flex-col gap-4 min-h-0">
+      <div className="flex flex-col gap-4 min-h-0 overflow-y-auto pr-2">
         {/* Agent Visualizer */}
-        <AgentVisualizer className="flex-1 min-h-[200px]" />
+        <AgentVisualizer className="flex-grow flex-shrink-0 min-h-[300px]" />
 
         {/* Control Panel */}
         <ControlPanel
           connectionState={connectionState}
           onConnect={() => {}}
           onDisconnect={onDisconnect}
+          className="flex-shrink-0"
         />
 
         {/* Input Console */}
         <InputConsole
           onSubmit={handleIngest}
           disabled={isIngesting || connectionState !== 'connected'}
+          documents={documents}
+          className="flex-shrink-0"
         />
       </div>
     </main>
@@ -261,9 +264,9 @@ const DisconnectedContent = ({
       </div>
 
       {/* Right Panel */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 overflow-y-auto min-h-0 pr-2">
         {/* Placeholder Visualizer */}
-        <div className="hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4 flex-1 flex items-center justify-center min-h-[200px]">
+        <div className="hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4 flex-grow flex-shrink-0 flex items-center justify-center min-h-[300px]">
           <div className="text-center">
             <div
               className={cn(
@@ -284,10 +287,11 @@ const DisconnectedContent = ({
           connectionState={connectionState}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
+          className="flex-shrink-0"
         />
 
         {/* Disabled Input Console */}
-        <InputConsole onSubmit={async () => {}} disabled />
+        <InputConsole onSubmit={async () => {}} disabled className="flex-shrink-0" />
       </div>
     </main>
   );

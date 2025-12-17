@@ -59,8 +59,10 @@ class ElevenLabsConfig:
     # API key is read automatically by LiveKit plugin from ELEVEN_API_KEY
     api_key: str = field(default_factory=lambda: os.getenv("ELEVEN_API_KEY", ""))
     
-    # Arnold-style Terminator voice
-    voice_id: str = "8DGMp3sPQNZOuCfSIxxE"
+    # Voice IDs for different modes
+    voice_id: str = "8DGMp3sPQNZOuCfSIxxE"  # Default: Arnold-style Terminator voice
+    voice_id_terminator: str = "8DGMp3sPQNZOuCfSIxxE"  # Arnold/Terminator
+    voice_id_standard: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel - warm, conversational
     
     # Models: default to low-latency streaming models for responsiveness.
     # Valid examples: eleven_turbo_v2_5, eleven_flash_v2_5, eleven_multilingual_v2
@@ -129,6 +131,60 @@ class RAGConfig:
 
 
 @dataclass
+class VADConfig:
+    """Voice Activity Detection settings.
+    
+    These settings control how the agent detects speech and handles
+    turn-taking. Tune these for optimal conversation flow.
+    
+    Guidelines:
+    - min_speech_duration: Lower = faster interruption detection, but may trigger on noise
+    - min_silence_duration: Lower = faster response, but may cut off user mid-thought
+    - activation_threshold: Lower = more sensitive, may trigger on background noise
+    """
+    # Minimum speech duration to register as user speaking (seconds)
+    # Lower values allow faster interruption detection
+    min_speech_duration: float = 0.05  # 50ms - quick for interruptions
+    
+    # Minimum silence duration to end a turn (seconds)
+    # Lower values = faster agent response, but may cut off user
+    min_silence_duration: float = 0.45  # 450ms - balanced for conversation
+    
+    # Activation threshold (0.0-1.0)
+    # Lower = more sensitive, may pick up background noise
+    # Higher = less sensitive, may miss soft speech
+    activation_threshold: float = 0.5  # Default, balanced sensitivity
+    
+    # Profiles for different environments
+    @classmethod
+    def quiet_environment(cls) -> "VADConfig":
+        """Optimized for quiet environments - more sensitive."""
+        return cls(
+            min_speech_duration=0.03,
+            min_silence_duration=0.4,
+            activation_threshold=0.4,
+        )
+    
+    @classmethod
+    def noisy_environment(cls) -> "VADConfig":
+        """Optimized for noisy environments - less sensitive."""
+        return cls(
+            min_speech_duration=0.1,
+            min_silence_duration=0.6,
+            activation_threshold=0.6,
+        )
+    
+    @classmethod
+    def reading_mode(cls) -> "VADConfig":
+        """Optimized for reading mode - quick interruption detection."""
+        return cls(
+            min_speech_duration=0.03,
+            min_silence_duration=0.35,
+            activation_threshold=0.45,
+        )
+
+
+@dataclass
 class AgentConfig:
     """Main agent configuration aggregating all settings."""
     livekit: LiveKitConfig = field(default_factory=LiveKitConfig)
@@ -137,6 +193,7 @@ class AgentConfig:
     elevenlabs: ElevenLabsConfig = field(default_factory=ElevenLabsConfig)
     tavily: TavilyConfig = field(default_factory=TavilyConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
+    vad: VADConfig = field(default_factory=VADConfig)
 
 
 # =============================================================================

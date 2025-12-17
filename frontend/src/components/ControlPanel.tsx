@@ -5,10 +5,8 @@ import {
   PhoneOff,
   Phone,
   Loader2,
-  Volume2,
-  VolumeX,
 } from 'lucide-react';
-import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { useLocalParticipant } from '@livekit/components-react';
 import { cn } from '../utils';
 import type { ConnectionState } from '../types';
 
@@ -37,8 +35,6 @@ export const ControlPanel = ({
   onDisconnect,
   className,
 }: ControlPanelProps) => {
-  const [isMuted, setIsMuted] = useState(false);
-  
   const isConnected = connectionState === 'connected';
   const isConnecting = connectionState === 'connecting' || connectionState === 'reconnecting';
   const canConnect = connectionState === 'disconnected' || connectionState === 'error';
@@ -134,13 +130,34 @@ const MicToggleButton = () => {
   const [isPending, setIsPending] = useState(false);
 
   const toggleMic = useCallback(async () => {
-    if (!localParticipant) return;
+    if (!localParticipant) {
+      return;
+    }
     
     setIsPending(true);
     try {
-      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+      const targetState = !isMicrophoneEnabled;
+      
+      // If enabling mic, request permissions first
+      if (targetState && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Stop the stream immediately - we just needed permission
+          stream.getTracks().forEach(track => track.stop());
+        } catch (permError) {
+          console.error('Microphone permission denied:', permError);
+          alert('Microphone permission is required. Please allow microphone access in your browser settings.');
+          return;
+        }
+      }
+      
+      await localParticipant.setMicrophoneEnabled(targetState);
     } catch (error) {
       console.error('Failed to toggle microphone:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Permission') || errorMessage.includes('permission')) {
+        alert('Microphone permission is required. Please allow microphone access in your browser settings.');
+      }
     } finally {
       setIsPending(false);
     }
@@ -275,4 +292,3 @@ export const StandaloneControlPanel = ({
     </div>
   );
 };
-

@@ -9,8 +9,11 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  File,
+  ChevronUp,
 } from 'lucide-react';
 import { cn } from '../utils';
+import type { DocumentMetadata } from '../types';
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 type SourceType = 'pdf' | 'youtube' | 'web' | 'file';
@@ -22,6 +25,8 @@ interface InputConsoleProps {
   disabled?: boolean;
   /** Custom class name */
   className?: string;
+  /** List of shared documents */
+  documents?: DocumentMetadata[];
 }
 
 /** Detect the type of URL */
@@ -50,7 +55,7 @@ function detectSourceType(url: string): SourceType | null {
 }
 
 /** Get icon for source type */
-function getSourceIcon(type: SourceType) {
+function getSourceIcon(type: string) {
   switch (type) {
     case 'youtube':
       return <Youtube className="w-4 h-4" />;
@@ -58,8 +63,10 @@ function getSourceIcon(type: SourceType) {
       return <FileText className="w-4 h-4" />;
     case 'web':
       return <Globe className="w-4 h-4" />;
+    case 'text':
     case 'file':
-      return <Upload className="w-4 h-4" />;
+    default:
+      return <File className="w-4 h-4" />;
   }
 }
 
@@ -75,6 +82,7 @@ export const InputConsole = ({
   onSubmit,
   disabled = false,
   className,
+  documents = [],
 }: InputConsoleProps) => {
   const [urlInput, setUrlInput] = useState('');
   const [status, setStatus] = useState<UploadStatus>('idle');
@@ -327,6 +335,58 @@ export const InputConsole = ({
           </div>
         )}
       </div>
+
+      {/* Shared Files List */}
+      {documents.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-terminator-border">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-terminator-red text-[10px] font-mono tracking-wider">
+              ▸ SHARED_DATA [{documents.length}]
+            </span>
+          </div>
+          
+          <div className="relative group">
+             {/* Visible List (Top 2) */}
+             <div className="space-y-1">
+               {documents.slice(0, 2).map(doc => (
+                 <div key={doc.id} className="flex items-center gap-2 text-xs font-mono text-terminator-text-dim">
+                   <div className="text-terminator-cyan/70">
+                     {getSourceIcon(doc.sourceType)}
+                   </div>
+                   <span className="truncate">{doc.title}</span>
+                 </div>
+               ))}
+               
+               {documents.length > 2 && (
+                 <div className="flex items-center gap-2 text-xs font-mono text-terminator-text-dim/70 pl-6 cursor-help hover:text-terminator-cyan transition-colors">
+                   <span>+ {documents.length - 2} more files...</span>
+                 </div>
+               )}
+             </div>
+
+             {/* Hover Drawer (All Files) */}
+             {documents.length > 2 && (
+               <div className="absolute bottom-full left-0 w-full mb-2 hidden group-hover:block z-50">
+                 <div className="bg-terminator-darker/95 backdrop-blur-md border border-terminator-border rounded-lg shadow-2xl p-3 max-h-[200px] overflow-y-auto custom-scrollbar">
+                   <div className="text-[10px] text-terminator-red font-mono mb-2 pb-1 border-b border-terminator-border/50 sticky top-0 bg-terminator-darker/95 backdrop-blur-md">
+                     ALL_SHARED_FILES
+                   </div>
+                   <div className="space-y-2">
+                     {documents.map(doc => (
+                       <div key={doc.id} className="flex items-center gap-2 text-xs font-mono text-terminator-text hover:text-terminator-cyan transition-colors p-1 rounded hover:bg-terminator-cyan/5">
+                         <div className="shrink-0 text-terminator-cyan">
+                           {getSourceIcon(doc.sourceType)}
+                         </div>
+                         <span className="truncate" title={doc.title}>{doc.title}</span>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+             )}
+          </div>
+        </div>
+      )}
 
       {/* Supported formats */}
       <div className="mt-3 pt-3 border-t border-terminator-border">

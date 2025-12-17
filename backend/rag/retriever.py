@@ -236,9 +236,17 @@ class DocumentRetriever:
             for doc_id, metadata in doc_metadata.items():
                 doc_title = metadata.get("title", "").lower()
                 
-                # Simple substring matching score
-                if title_query_lower in doc_title:
-                    score = len(title_query_lower) / len(doc_title) if doc_title else 0
+                # Bidirectional substring matching:
+                # - query in title: user searches partial title
+                # - title in query: LLM sends title with extra metadata like "(web, 7 sections)"
+                if title_query_lower in doc_title or doc_title in title_query_lower:
+                    # Score based on how much of the title matches
+                    if title_query_lower in doc_title:
+                        score = len(title_query_lower) / len(doc_title) if doc_title else 0
+                    else:
+                        # Title is substring of query - score based on title coverage
+                        score = len(doc_title) / len(title_query_lower) if title_query_lower else 0
+                    
                     if score > best_score:
                         best_score = score
                         best_match = {

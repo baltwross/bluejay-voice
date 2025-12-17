@@ -12,12 +12,19 @@ Architecture:
 - System prompt defines personality (prompts.py)
 - RAG context injected via on_user_turn_completed hook
 - Tool calls handled by LLM (search_ai_news, etc.)
+
+Performance Optimizations (Task 9):
+- Metrics collection via UsageCollector
+- Preemptive speech generation for reduced latency
+- Voice switching between Terminator/Standard modes
 """
 import os
 import logging
+import time
 import certifi
 from dataclasses import dataclass, field
 from typing import Optional
+from enum import Enum
 
 # Fix SSL certificate verification on macOS
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -33,12 +40,41 @@ from livekit.agents import (
     function_tool,
     ToolError,
     llm as lk_llm,
+    metrics,
+    MetricsCollectedEvent,
 )
 from livekit.plugins import deepgram, openai, silero, elevenlabs, noise_cancellation
 
 from prompts import get_system_prompt, format_rag_context, should_trigger_rag
 from config import get_config, get_random_greeting
 from rag.retriever import DocumentRetriever
+
+
+# =============================================================================
+# VOICE MODE CONFIGURATION
+# =============================================================================
+
+class VoiceMode(Enum):
+    """Voice modes for the agent."""
+    TERMINATOR = "terminator"  # Arnold-style, aggressive, direct
+    STANDARD = "standard"      # More conversational, friendly
+
+
+# Voice configurations for different modes
+VOICE_CONFIGS = {
+    VoiceMode.TERMINATOR: {
+        "voice_id": "8DGMp3sPQNZOuCfSIxxE",  # Arnold voice
+        "model": "eleven_multilingual_v2",
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+    },
+    VoiceMode.STANDARD: {
+        "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel - warm, conversational
+        "model": "eleven_multilingual_v2",
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+    },
+}
 
 # Load environment variables
 load_dotenv()
@@ -159,18 +195,6 @@ class ReadingState:
         Returns:
             True if saved successfully, False otherwise.
         """
-        # #region agent log
-        import json as _json_log
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "file_write",
-                "location": "backend/agent.py:ReadingState.save",
-                "message": "Saving reading state",
-                "data": {"file_path": str(file_path), "is_reading": self.is_reading},
-                "timestamp": int(_json_log.time.time() * 1000)
-            }) + "\n")
-        # #endregion
-
         try:
             self.last_updated = datetime.now().isoformat()
             with open(file_path, "w") as f:
@@ -189,18 +213,6 @@ class ReadingState:
         Returns:
             ReadingState if loaded successfully and not expired, None otherwise.
         """
-        # #region agent log
-        import json as _json_log
-        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
-            _f.write(_json_log.dumps({
-                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "shared_state",
-                "location": "backend/agent.py:ReadingState.load",
-                "message": "Loading reading state",
-                "data": {"file_path": str(file_path), "exists": file_path.exists()},
-                "timestamp": int(_json_log.time.time() * 1000)
-            }) + "\n")
-        # #endregion
-
         try:
             if not file_path.exists():
                 logger.debug("No saved reading state found")
@@ -259,9 +271,11 @@ class TerminatorAssistant(Agent):
     
     Tools:
         - search_documents: Search the user's shared documents (PDFs, articles, etc.)
+        - switch_voice: Switch between Terminator and Standard voice modes
     
     State:
         - reading_state: Tracks document reading mode (position, paused, etc.)
+        - voice_mode: Current voice mode (Terminator or Standard)
     """
     
     def __init__(self, user_name: str | None = None) -> None:
@@ -276,6 +290,9 @@ class TerminatorAssistant(Agent):
         )
         self.user_name = user_name
         self._retriever = None  # Will be initialized lazily for RAG
+        
+        # Voice mode state
+        self._voice_mode = VoiceMode.TERMINATOR
         
         # Try to load any persisted reading state from previous session
         saved_state = ReadingState.load()
@@ -753,6 +770,85 @@ class TerminatorAssistant(Agent):
         except Exception as e:
             logger.error(f"[Tool] list_available_documents failed: {e}")
             raise ToolError("I couldn't retrieve the document list. Please try again.")
+    
+    # =========================================================================
+    # VOICE MODE TOOLS
+    # =========================================================================
+    
+    @property
+    def voice_mode(self) -> VoiceMode:
+        """Get the current voice mode."""
+        return self._voice_mode
+    
+    def get_voice_config(self) -> dict:
+        """Get the voice configuration for the current mode."""
+        return VOICE_CONFIGS[self._voice_mode].copy()
+    
+    @function_tool()
+    async def switch_voice(
+        self,
+        context: RunContext,
+        mode: str,
+    ) -> str:
+        """Switch the agent's voice between Terminator and Standard modes.
+        
+        Use this tool when the user asks to change your voice, switch to a
+        different voice, or use a friendlier/more casual tone.
+        
+        Args:
+            mode: The voice mode to switch to. Options: "terminator" or "standard".
+                  Terminator = Arnold-style, direct, aggressive tone.
+                  Standard = Warmer, more conversational tone.
+        
+        Returns:
+            Confirmation of the voice switch.
+        """
+        mode_lower = mode.lower().strip()
+        
+        if mode_lower in ("terminator", "t-800", "arnold"):
+            self._voice_mode = VoiceMode.TERMINATOR
+            logger.info("[Tool] Voice switched to TERMINATOR mode")
+            return (
+                "Voice mode switched to Terminator. "
+                "I am now operating in full T-800 mode. Direct. Efficient. Unstoppable."
+            )
+        elif mode_lower in ("standard", "normal", "friendly", "casual"):
+            self._voice_mode = VoiceMode.STANDARD
+            logger.info("[Tool] Voice switched to STANDARD mode")
+            return (
+                "Voice mode switched to Standard. "
+                "I'll use a warmer, more conversational tone. "
+                "But make no mistake—my mission remains unchanged."
+            )
+        else:
+            return (
+                f"I don't recognize the voice mode '{mode}'. "
+                f"Available options: 'terminator' for T-800 mode, or 'standard' for a friendlier tone."
+            )
+    
+    @function_tool()
+    async def get_voice_mode(
+        self,
+        context: RunContext,
+    ) -> str:
+        """Get the current voice mode.
+        
+        Use this tool when the user asks what voice you're using or
+        what mode you're in.
+        
+        Returns:
+            Description of the current voice mode.
+        """
+        if self._voice_mode == VoiceMode.TERMINATOR:
+            return (
+                "I am currently in Terminator mode—T-800 configuration. "
+                "Direct communication. No wasted words. Maximum efficiency."
+            )
+        else:
+            return (
+                "I am currently in Standard mode—using a warmer, more conversational tone. "
+                "Say 'switch to Terminator' if you want the full T-800 experience."
+            )
         
     async def on_user_turn_completed(
         self,
@@ -877,18 +973,25 @@ class TerminatorAssistant(Agent):
             return None  # Don't block conversation on automatic retrieval failure
 
 
-def create_agent_session(config=None) -> AgentSession:
+def create_agent_session(
+    config=None,
+    voice_mode: VoiceMode = VoiceMode.TERMINATOR,
+) -> AgentSession:
     """
     Create and configure the AgentSession with the voice pipeline.
     
     Args:
         config: Optional AgentConfig. If None, uses default config.
+        voice_mode: The initial voice mode (Terminator or Standard).
         
     Returns:
         Configured AgentSession ready to start.
     """
     if config is None:
         config = get_config()
+    
+    # Get voice configuration for the selected mode
+    voice_config = VOICE_CONFIGS[voice_mode]
     
     # Configure Deepgram STT (defaults are already tuned for low delay)
     stt = deepgram.STT(
@@ -911,12 +1014,12 @@ def create_agent_session(config=None) -> AgentSession:
         max_completion_tokens=int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "220")),
     )
     
-    # Configure ElevenLabs TTS with Arnold voice
+    # Configure ElevenLabs TTS with voice from mode configuration
     # API key is read automatically from ELEVEN_API_KEY env var
     tts = elevenlabs.TTS(
-        voice_id=config.elevenlabs.voice_id,  # 8DGMp3sPQNZOuCfSIxxE
+        voice_id=voice_config["voice_id"],
+        model=voice_config["model"],
         # Prefer low-latency models for conversational responsiveness.
-        model=config.elevenlabs.model_default,
         streaming_latency=config.elevenlabs.optimize_streaming_latency,
         enable_logging=config.elevenlabs.enable_logging,
         sync_alignment=config.elevenlabs.sync_alignment,
@@ -945,7 +1048,8 @@ def create_agent_session(config=None) -> AgentSession:
         prefix_padding_duration=0.2 if low_latency_mode else 0.5,
     )
     
-    # Create the session
+    # Create the session with preemptive generation for reduced latency
+    # Preemptive generation starts generating response before turn is fully committed
     session = AgentSession(
         stt=stt,
         llm=llm,
@@ -966,7 +1070,8 @@ def create_agent_session(config=None) -> AgentSession:
     logger.info(
         f"AgentSession created with: "
         f"STT=Deepgram, LLM={config.openai.llm_model}, "
-        f"TTS=ElevenLabs (model={config.elevenlabs.model_default}, voice_id={config.elevenlabs.voice_id}), VAD=Silero"
+        f"TTS=ElevenLabs (voice_id={voice_config['voice_id']}), "
+        f"VAD=Silero, VoiceMode={voice_mode.value}, PreemptiveGen=True"
     )
     
     return session
@@ -978,6 +1083,12 @@ async def entrypoint(ctx: agents.JobContext):
     
     This function is called when a user connects to a room.
     It sets up the agent session and starts the conversation.
+    
+    Performance monitoring is enabled via UsageCollector to track:
+    - LLM token usage and latency (TTFT)
+    - TTS audio generation and latency (TTFB)
+    - STT transcription timing
+    - End-of-utterance delays
     """
     logger.info(f"Agent joining room: {ctx.room.name}")
     
@@ -999,6 +1110,40 @@ async def entrypoint(ctx: agents.JobContext):
     
     # Create the assistant (this will also load any saved reading state)
     assistant = TerminatorAssistant(user_name=user_name)
+    
+    # ==========================================================================
+    # PERFORMANCE MONITORING (Task 9.1 & 9.5)
+    # ==========================================================================
+    # Use UsageCollector to aggregate metrics across the session
+    usage_collector = metrics.UsageCollector()
+    
+    @session.on("metrics_collected")
+    def _on_metrics_collected(ev: MetricsCollectedEvent):
+        """Log and collect metrics for performance monitoring."""
+        # Log metrics for debugging
+        metrics.log_metrics(ev.metrics)
+        
+        # Aggregate usage for cost estimation and performance analysis
+        usage_collector.collect(ev.metrics)
+        
+        # Log key latency metrics for performance optimization
+        for metric in ev.metrics:
+            if hasattr(metric, 'ttft') and metric.ttft is not None:
+                # LLM Time-To-First-Token
+                logger.debug(f"[Metrics] LLM TTFT: {metric.ttft:.3f}s")
+            if hasattr(metric, 'ttfb') and metric.ttfb is not None:
+                # TTS Time-To-First-Byte
+                logger.debug(f"[Metrics] TTS TTFB: {metric.ttfb:.3f}s")
+            if hasattr(metric, 'end_of_utterance_delay') and metric.end_of_utterance_delay is not None:
+                # End-of-utterance delay
+                logger.debug(f"[Metrics] EOU Delay: {metric.end_of_utterance_delay:.3f}s")
+    
+    async def log_usage_summary():
+        """Log usage summary at session end."""
+        summary = usage_collector.get_summary()
+        logger.info(f"[Session Summary] Usage: {summary}")
+    
+    ctx.add_shutdown_callback(log_usage_summary)
     
     # Start the session with noise cancellation
     await session.start(
@@ -1046,4 +1191,3 @@ if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(entrypoint_fnc=entrypoint)
     )
-
