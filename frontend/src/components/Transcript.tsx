@@ -113,7 +113,8 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
   const messages = useMemo((): TranscriptMessage[] => {
     const combined: TranscriptMessage[] = [];
 
-    // Process agent transcriptions (with safety check)
+    // Process agent transcriptions (ReceivedTranscriptionSegment[])
+    // These have: id, text, final, firstReceivedTime
     if (agentTranscriptions && Array.isArray(agentTranscriptions)) {
       agentTranscriptions.forEach((segment) => {
         combined.push({
@@ -126,15 +127,18 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
       });
     }
 
-    // Process user transcriptions (with safety check)
+    // Process user transcriptions (TextStreamData[])
+    // These have: text, participantInfo, streamInfo (with timestamp)
     if (userTranscriptions && Array.isArray(userTranscriptions)) {
-      userTranscriptions.forEach((segment) => {
+      userTranscriptions.forEach((stream, index) => {
+        // TextStreamData has streamInfo.timestamp and streamInfo.id
+        const streamInfo = (stream as { streamInfo?: { timestamp?: number; id?: string } }).streamInfo;
         combined.push({
-          id: (segment as any).id || generateId(),
+          id: streamInfo?.id || `user-${index}-${Date.now()}`,
           sender: 'user',
-          text: segment.text,
-          timestamp: new Date((segment as any).firstReceivedTime || (segment as any).timestamp || Date.now()),
-          isFinal: (segment as any).final ?? (segment as any).isFinal ?? true,
+          text: stream.text,
+          timestamp: new Date(streamInfo?.timestamp ?? Date.now()),
+          isFinal: true, // TextStreamData doesn't have a final property, treat as final
         });
       });
     }

@@ -10,7 +10,6 @@ import {
   CheckCircle,
   AlertCircle,
   File,
-  ChevronUp,
 } from 'lucide-react';
 import { cn } from '../utils';
 import type { DocumentMetadata } from '../types';

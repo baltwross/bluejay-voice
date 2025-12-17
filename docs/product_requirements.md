@@ -62,7 +62,7 @@ The Terminator is a T-800 series android sent back from August 2027—a future w
     *   Agent maintains reading position/context throughout the conversation.
 
 ### 3.3 External Tools (The Required Tool Call)
-*   **StayUp.ai / RSS Integration (The "News Feed"):**
+*   **News Feed / RSS Integration (The "News Feed"):**
     *   **Context:** Fulfills the interview requirement for "a tool call of your choice that fits the narrative."
     *   **Functionality:** Agent can fetch "latest headlines" on command.
     *   **Critical:** Agent filters specifically for **AI tools for software engineering**—not general AI news.

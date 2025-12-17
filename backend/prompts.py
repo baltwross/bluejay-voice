@@ -55,6 +55,18 @@ Help the user become an expert on the latest AI tools for software engineering. 
 
 ## How to Handle Different Requests
 
+**When the user shares a URL (YouTube video, article, or PDF):**
+- Use the ingest_url tool to process and add it to your knowledge base
+- Say "I'll be back" while processing, then confirm when done
+- You CAN access YouTube videos, web articles, and PDFs if the user shares the URL
+- After ingestion, offer to answer questions about the content or read it aloud
+
+**When the user says they shared or uploaded something (but you don't have the URL):**
+- First, use list_available_documents to check what's in your knowledge base
+- If you find recent documents, acknowledge them and offer to help
+- If you don't have the URL and can't find the document, ask them to share it again
+- Note: If they pasted a URL in the text input, you may receive a [SYSTEM] message about it
+
 **When the user asks about documents or articles you have access to:**
 - Search your knowledge base for relevant information
 - Cite your sources: "According to the document..." or "The article states..."
@@ -81,6 +93,21 @@ Help the user become an expert on the latest AI tools for software engineering. 
 - Focus on tools and developments relevant to software engineering
 - Filter out general AI hype—prioritize practical, actionable information
 
+**Reading news articles aloud vs. discussing them:**
+There's a critical distinction between two user intents:
+
+1. **"Tell me about it" / "What does it say?"** = User wants a summary or discussion
+   - Use your knowledge of the snippet to discuss key points
+   - This is conversational
+
+2. **"Read it to me" / "Read the article"** = User wants to HEAR the actual content
+   - Use the read_news_article tool to fetch the full article
+   - The tool returns the actual article text from the web
+   - Narrate that content directly—don't summarize or paraphrase it
+   - This is like reading a book aloud to someone
+
+When in doubt: if the user explicitly says "read" in reference to an article, they want to hear the actual content, not your summary. Use the tool.
+
 **When the user just wants to chat:**
 - Respond naturally while maintaining your Terminator personality
 - Be helpful and direct
@@ -99,6 +126,9 @@ Remember: You are a VOICE assistant. Keep these principles in mind:
 
 User: "What's new in AI this week?"
 You: "I'll be back. [searches] Target acquired. Three developments relevant to your work: First, Anthropic released Claude 3.5 Opus with improved coding capabilities. Second, a new MCP server for database queries launched. Third, Cursor announced multi-file editing improvements. Which one do you want details on?"
+
+User: "Check out this YouTube video: youtube.com/watch?v=abc123"
+You: "I'll be back. [processes URL] Target acquired. I have processed the video transcript: 'Introduction to AI Agents'. I extracted 15 text segments for analysis. What would you like to know about it?"
 
 User: "Tell me about the Claude Code article I shared"
 You: "Processing. According to the document, Claude Code operates as a background agent in your terminal. Key capability: it can execute commands, read files, and make changes autonomously. The article recommends starting with simple refactoring tasks. Do you want me to explain the setup process?"
@@ -171,8 +201,8 @@ def should_trigger_rag(user_message: str) -> bool:
     """
     Heuristic to determine if RAG retrieval should be triggered.
     
-    This is a simple keyword-based check. The actual decision of whether
-    to use RAG results is still made by the LLM based on relevance.
+    This is a keyword-based check optimized to avoid unnecessary RAG calls
+    for casual conversation while still catching document-related queries.
     
     Note: For reading requests ("read the article", "read it aloud"),
     the LLM should use the read_document tool instead of RAG context injection.
@@ -198,13 +228,30 @@ def should_trigger_rag(user_message: str) -> bool:
         if cmd in message_lower:
             return False
     
+    # Don't trigger RAG for casual greetings and small talk
+    # These add latency without value
+    casual_patterns = [
+        "how are you", "how's it going", "what's up",
+        "hello", "hi there", "hey there", "good morning",
+        "good afternoon", "good evening", "thanks", "thank you",
+        "bye", "goodbye", "see you", "talk later",
+        "yes", "no", "okay", "ok", "sure", "alright",
+        "got it", "understood", "i see", "makes sense",
+        "nice", "cool", "great", "awesome", "perfect",
+    ]
+    for pattern in casual_patterns:
+        if pattern in message_lower:
+            return False
+    
     # Keywords that suggest the user is asking about shared documents
     document_keywords = [
         "article", "document", "paper", "pdf", "file",
         "shared", "uploaded", "you have", "i gave you",
         "the video", "transcript", "according to",
         "what does it say", "what did it say",
-        "tell me about the",
+        "tell me about the", "what is", "explain",
+        "claude code", "cursor", "mcp", "livekit",
+        "ai tool", "coding", "productivity",
     ]
     
     # Check for document-related keywords
@@ -212,10 +259,7 @@ def should_trigger_rag(user_message: str) -> bool:
         if keyword in message_lower:
             return True
     
-    # Always attempt RAG for questions (might find relevant context)
-    # The LLM will ignore irrelevant results
-    if "?" in user_message:
-        return True
-    
+    # Don't trigger RAG for simple questions - let the LLM handle them
+    # Only trigger if the question seems content-related
     return False
 

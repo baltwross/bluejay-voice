@@ -26,6 +26,9 @@ langchain-text-splitters
 # Vector Store
 chromadb
 
+# Hybrid Search (BM25 keyword search)
+rank-bm25
+
 # Document Loaders
 pymupdf
 youtube-transcript-api
@@ -35,3 +38,9 @@ python-docx
 
 # Tools
 tavily-python
+
+# Testing
+pytest
+pytest-asyncio
+httpx
+livekit  # For client-side WebRTC testing

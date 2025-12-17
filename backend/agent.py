@@ -23,8 +23,9 @@ import logging
 import time
 import certifi
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Literal
 from enum import Enum
+from datetime import datetime, timedelta
 
 # Fix SSL certificate verification on macOS
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -48,6 +49,148 @@ from livekit.plugins import deepgram, openai, silero, elevenlabs, noise_cancella
 from prompts import get_system_prompt, format_rag_context, should_trigger_rag
 from config import get_config, get_random_greeting
 from rag.retriever import DocumentRetriever
+from rag.indexer import DocumentIndexer
+
+# Tavily for AI news search
+try:
+    from tavily import TavilyClient
+    TAVILY_AVAILABLE = True
+except ImportError:
+    TAVILY_AVAILABLE = False
+    TavilyClient = None  # type: ignore
+
+
+# =============================================================================
+# NEWS CACHE
+# =============================================================================
+# Simple in-memory cache for news queries to reduce API calls and improve latency
+
+class NewsCache:
+    """Simple in-memory cache for news search results."""
+    
+    def __init__(self, ttl_minutes: int = 5):
+        """
+        Initialize the news cache.
+        
+        Args:
+            ttl_minutes: Time-to-live for cache entries in minutes.
+        """
+        self._cache: dict[str, tuple[datetime, list[dict]]] = {}
+        self._ttl = timedelta(minutes=ttl_minutes)
+        # Store recent articles for read_news_article tool (title -> article info)
+        self._recent_articles: dict[str, dict] = {}
+        self._articles_timestamp: datetime | None = None
+    
+    def get(self, cache_key: str) -> list[dict] | None:
+        """
+        Get cached results if still valid.
+        
+        Args:
+            cache_key: The cache key (normalized query string).
+            
+        Returns:
+            Cached results if valid, None if expired or not found.
+        """
+        if cache_key not in self._cache:
+            return None
+        
+        timestamp, results = self._cache[cache_key]
+        if datetime.now() - timestamp > self._ttl:
+            # Expired - remove and return None
+            del self._cache[cache_key]
+            return None
+        
+        return results
+    
+    def set(self, cache_key: str, results: list[dict]) -> None:
+        """
+        Store results in cache.
+        
+        Args:
+            cache_key: The cache key (normalized query string).
+            results: The search results to cache.
+        """
+        self._cache[cache_key] = (datetime.now(), results)
+    
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        self._cache.clear()
+    
+    def store_articles(self, articles: list[dict]) -> None:
+        """
+        Store recent articles for later retrieval by title.
+        
+        Args:
+            articles: List of article dicts with 'title', 'url', 'content'.
+        """
+        self._recent_articles.clear()
+        for article in articles:
+            title = article.get("title", "").lower().strip()
+            if title:
+                self._recent_articles[title] = article
+        self._articles_timestamp = datetime.now()
+        logger.debug(f"Stored {len(self._recent_articles)} articles for later retrieval")
+    
+    def find_article_by_title(self, title_query: str) -> dict | None:
+        """
+        Find a recently searched article by partial title match.
+        
+        Args:
+            title_query: Partial or full title to search for.
+            
+        Returns:
+            Article dict if found, None otherwise.
+        """
+        # Check if articles are expired
+        if self._articles_timestamp:
+            if datetime.now() - self._articles_timestamp > self._ttl:
+                logger.debug("Recent articles expired, clearing")
+                self._recent_articles.clear()
+                self._articles_timestamp = None
+                return None
+        
+        query_lower = title_query.lower().strip()
+        
+        # First try exact match
+        if query_lower in self._recent_articles:
+            return self._recent_articles[query_lower]
+        
+        # Then try partial match (query is substring of title)
+        for stored_title, article in self._recent_articles.items():
+            if query_lower in stored_title or stored_title in query_lower:
+                return article
+        
+        # Try matching key words
+        query_words = set(query_lower.split())
+        best_match = None
+        best_score = 0
+        
+        for stored_title, article in self._recent_articles.items():
+            title_words = set(stored_title.split())
+            # Count matching words
+            matches = len(query_words & title_words)
+            if matches > best_score and matches >= 2:  # At least 2 words must match
+                best_score = matches
+                best_match = article
+        
+        return best_match
+    
+    def list_recent_articles(self) -> list[str]:
+        """
+        Get titles of recently searched articles.
+        
+        Returns:
+            List of article titles.
+        """
+        if self._articles_timestamp:
+            if datetime.now() - self._articles_timestamp > self._ttl:
+                return []
+        
+        return [article.get("title", "Unknown") for article in self._recent_articles.values()]
+
+
+# Global news cache instance (shared across agent instances)
+_news_cache = NewsCache(ttl_minutes=5)
 
 
 # =============================================================================
@@ -56,25 +199,42 @@ from rag.retriever import DocumentRetriever
 
 class VoiceMode(Enum):
     """Voice modes for the agent."""
-    TERMINATOR = "terminator"  # Arnold-style, aggressive, direct
-    STANDARD = "standard"      # More conversational, friendly
+    TERMINATOR = "terminator"  # T-800 Terminator voice
+    INSPIRE = "inspire"        # Inspire voice - motivational, energetic
+    FATE = "fate"              # Fate voice - mysterious, dramatic
 
 
 # Voice configurations for different modes
+# TERMINATOR uses the custom voice that works
+# INSPIRE and FATE use ElevenLabs premade voices (the custom ones aren't accessible)
 VOICE_CONFIGS = {
     VoiceMode.TERMINATOR: {
-        "voice_id": "8DGMp3sPQNZOuCfSIxxE",  # Arnold voice
+        # Custom T-800 Terminator voice (verified working)
+        "voice_id": "8DGMp3sPQNZOuCfSIxxE",
         "model": "eleven_multilingual_v2",
         "stability": 0.5,
         "similarity_boost": 0.75,
     },
-    VoiceMode.STANDARD: {
-        "voice_id": "21m00Tcm4TlvDq8ikWAM",  # Rachel - warm, conversational
+    VoiceMode.INSPIRE: {
+        # "Josh" - deep, American, motivational (premade - guaranteed to work)
+        # Original custom voice 89eOzfoGxxCOxCzNy9l5 is not accessible
+        "voice_id": "TxGEqnHWrfWFTfGW9XjX",
+        "model": "eleven_multilingual_v2",
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+    },
+    VoiceMode.FATE: {
+        # "Adam" - deep, authoritative, dramatic (premade - guaranteed to work)
+        # Original custom voice XfNU2rGpBa01ckF309OY is not accessible
+        "voice_id": "pNInz6obpgDQGcFmaJgB",
         "model": "eleven_multilingual_v2",
         "stability": 0.5,
         "similarity_boost": 0.75,
     },
 }
+
+# Fallback voice ID if primary voice fails (Rachel - reliable premade voice)
+FALLBACK_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
 
 # Load environment variables
 load_dotenv()
@@ -271,11 +431,20 @@ class TerminatorAssistant(Agent):
     
     Tools:
         - search_documents: Search the user's shared documents (PDFs, articles, etc.)
-        - switch_voice: Switch between Terminator and Standard voice modes
+        - ingest_url: Process and index content from URLs (YouTube, web, PDF)
+        - read_document: Read a document aloud with interruptibility
+        - continue_reading: Continue from paused position
+        - end_reading: Stop reading and reset state
+        - list_available_documents: List all documents in knowledge base
+        - check_reading_session: Check for resumable reading sessions
+        - switch_voice: Switch between Terminator, Inspire, and Fate voice modes
+        - get_voice_mode: Get the current voice mode
+        - search_ai_news: Search for latest AI news (Tavily integration)
+        - read_news_article: Read full content of a recently found news article
     
     State:
         - reading_state: Tracks document reading mode (position, paused, etc.)
-        - voice_mode: Current voice mode (Terminator or Standard)
+        - voice_mode: Current voice mode (Terminator, Inspire, or Fate)
     """
     
     def __init__(self, user_name: str | None = None) -> None:
@@ -290,9 +459,18 @@ class TerminatorAssistant(Agent):
         )
         self.user_name = user_name
         self._retriever = None  # Will be initialized lazily for RAG
+        self._indexer = None  # Will be initialized lazily for URL ingestion
+        self._tavily_client = None  # Will be initialized lazily for news search
+        
+        # Active document tracking - filters RAG to the document being discussed
+        self._active_document_id: Optional[str] = None
+        self._active_document_title: Optional[str] = None
         
         # Voice mode state
         self._voice_mode = VoiceMode.TERMINATOR
+        
+        # TTS instance will be set by the session after connection
+        self._tts: elevenlabs.TTS | None = None
         
         # Try to load any persisted reading state from previous session
         saved_state = ReadingState.load()
@@ -463,6 +641,62 @@ class TerminatorAssistant(Agent):
                 raise ToolError("Document retrieval system is currently unavailable.")
         return self._retriever
     
+    def _get_indexer(self) -> DocumentIndexer:
+        """
+        Get or initialize the document indexer for URL ingestion.
+        
+        Returns:
+            The DocumentIndexer instance.
+            
+        Raises:
+            ToolError: If indexer cannot be initialized.
+        """
+        if self._indexer is None:
+            try:
+                self._indexer = DocumentIndexer()
+                logger.info("Document indexer initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize document indexer: {e}")
+                raise ToolError("Document ingestion system is currently unavailable.")
+        return self._indexer
+    
+    def _get_tavily_client(self):
+        """
+        Get or initialize the Tavily client for news search.
+        
+        Returns:
+            The TavilyClient instance.
+            
+        Raises:
+            ToolError: If Tavily is not available or configured.
+        """
+        if not TAVILY_AVAILABLE:
+            logger.error("Tavily package not installed")
+            raise ToolError(
+                "News search is currently unavailable. "
+                "The Tavily package is not installed."
+            )
+        
+        if self._tavily_client is None:
+            config = get_config()
+            api_key = config.tavily.api_key
+            
+            if not api_key:
+                logger.error("TAVILY_API_KEY not configured")
+                raise ToolError(
+                    "News search is currently unavailable. "
+                    "The Tavily API key is not configured."
+                )
+            
+            try:
+                self._tavily_client = TavilyClient(api_key=api_key)
+                logger.info("Tavily client initialized for news search")
+            except Exception as e:
+                logger.error(f"Failed to initialize Tavily client: {e}")
+                raise ToolError("News search service is currently unavailable.")
+        
+        return self._tavily_client
+    
     # =========================================================================
     # TOOLS - Explicit tool calls that the LLM can invoke
     # =========================================================================
@@ -472,6 +706,7 @@ class TerminatorAssistant(Agent):
         self,
         context: RunContext,
         query: str,
+        search_active_document: bool = True,
     ) -> str:
         """Search the user's shared documents for relevant information.
         
@@ -479,8 +714,15 @@ class TerminatorAssistant(Agent):
         or other materials they have shared with you. This searches through
         all ingested content to find relevant passages.
         
+        For questions about specific parts of a document (like "reference 15",
+        "section 3", "the conclusion"), use this tool with search_active_document=True
+        to focus on the document being discussed.
+        
         Args:
             query: The search query describing what information to find.
+            search_active_document: If True and an active document is set,
+                searches only that document with higher coverage.
+                Set to False to search all documents.
             
         Returns:
             Relevant passages from the documents with source citations,
@@ -490,7 +732,19 @@ class TerminatorAssistant(Agent):
         
         try:
             retriever = self._get_retriever()
-            result = retriever.retrieve(query)
+            
+            # If active document is set and search_active_document is True,
+            # use HYBRID search for better keyword matching on specific refs
+            if search_active_document and self._active_document_id:
+                logger.info(f"[Tool] Hybrid search within active document: {self._active_document_title}")
+                result = retriever.hybrid_retrieve(
+                    query,
+                    document_id=self._active_document_id,
+                    k=12,  # Higher k for document-specific queries
+                    semantic_weight=0.4,  # Favor BM25 for specific lookups
+                )
+            else:
+                result = retriever.retrieve(query, k=6)  # Semantic search for general queries
             
             if not result.documents:
                 logger.info("[Tool] No relevant documents found")
@@ -508,6 +762,14 @@ class TerminatorAssistant(Agent):
                     title = src.get("title", "Unknown")
                     source_type = src.get("source_type", "document")
                     response_parts.append(f"\n- {title} ({source_type})")
+                    
+                    # Set active document if we found a single primary source
+                    if len(result.sources) == 1 and not self._active_document_id:
+                        doc_id = src.get("document_id")
+                        if doc_id:
+                            self._active_document_id = doc_id
+                            self._active_document_title = title
+                            logger.info(f"[Tool] Active document set to: {title}")
             
             logger.info(f"[Tool] Retrieved {len(result.documents)} documents")
             return "\n".join(response_parts)
@@ -517,6 +779,87 @@ class TerminatorAssistant(Agent):
         except Exception as e:
             logger.error(f"[Tool] search_documents failed: {e}")
             raise ToolError("I encountered an error while searching your documents. Please try again.")
+    
+    @function_tool()
+    async def ingest_url(
+        self,
+        context: RunContext,
+        url: str,
+    ) -> str:
+        """Ingest content from a URL shared by the user.
+        
+        Use this tool when the user shares a URL (YouTube video, web article, 
+        or PDF link) and wants you to analyze, read, or discuss its content.
+        This downloads and processes the content so you can answer questions about it.
+        
+        Supports:
+        - YouTube videos (extracts transcript)
+        - Web articles (extracts main content)
+        - PDF links (extracts text)
+        
+        Args:
+            url: The URL to ingest (YouTube, web article, or PDF).
+            
+        Returns:
+            Confirmation of successful ingestion with the document title,
+            or an error message if ingestion fails.
+        """
+        import re
+        
+        logger.info(f"[Tool] ingest_url called with: {url}")
+        
+        try:
+            indexer = self._get_indexer()
+            
+            # Detect URL type using patterns from loaders
+            url_lower = url.lower()
+            
+            # YouTube patterns
+            youtube_patterns = [
+                r"(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]+)",
+                r"(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]+)",
+                r"(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]+)",
+            ]
+            
+            is_youtube = any(re.match(pattern, url) for pattern in youtube_patterns)
+            is_pdf = url_lower.endswith(".pdf") or "/pdf" in url_lower
+            
+            # Route to appropriate indexer method
+            if is_youtube:
+                logger.info(f"[Tool] Detected YouTube URL, extracting transcript...")
+                result = indexer.index_youtube(url)
+                content_type = "YouTube video transcript"
+            elif is_pdf:
+                logger.info(f"[Tool] Detected PDF URL, extracting content...")
+                result = indexer.index_pdf(url)
+                content_type = "PDF document"
+            else:
+                logger.info(f"[Tool] Detected web URL, extracting article...")
+                result = indexer.index_web(url)
+                content_type = "web article"
+            
+            if result.get("success"):
+                title = result.get("title", "Unknown")
+                chunk_count = result.get("chunk_count", 0)
+                logger.info(f"[Tool] Successfully ingested: {title} ({chunk_count} chunks)")
+                return (
+                    f"Target acquired. I have processed the {content_type}: '{title}'. "
+                    f"I extracted {chunk_count} text segments for analysis. "
+                    f"What would you like to know about it?"
+                )
+            else:
+                error = result.get("error", "Unknown error")
+                logger.error(f"[Tool] Ingestion failed: {error}")
+                raise ToolError(f"Failed to process the URL: {error}")
+                
+        except ToolError:
+            raise
+        except Exception as e:
+            logger.error(f"[Tool] ingest_url failed: {e}")
+            raise ToolError(
+                "I encountered an error processing that URL. "
+                "Please verify the link is accessible and try again."
+            )
     
     @function_tool()
     async def read_document(
@@ -557,6 +900,11 @@ class TerminatorAssistant(Agent):
                         f"Which one would you like me to read?"
                     )
                 return f"I couldn't find a document matching '{document_title}'. You haven't shared any documents with me yet."
+            
+            # Set active document for RAG context filtering
+            self._active_document_id = doc["document_id"]
+            self._active_document_title = doc["title"]
+            logger.info(f"[Tool] Active document set to: {doc['title']} ({doc['document_id']})")
             
             # Get the first batch of chunks for reading
             result = retriever.retrieve_for_reading(
@@ -790,15 +1138,16 @@ class TerminatorAssistant(Agent):
         context: RunContext,
         mode: str,
     ) -> str:
-        """Switch the agent's voice between Terminator and Standard modes.
+        """Switch the agent's voice between Terminator, Inspire, and Fate modes.
         
-        Use this tool when the user asks to change your voice, switch to a
-        different voice, or use a friendlier/more casual tone.
+        Use this tool when the user asks to change your voice or switch to a
+        different voice style.
         
         Args:
-            mode: The voice mode to switch to. Options: "terminator" or "standard".
-                  Terminator = Arnold-style, direct, aggressive tone.
-                  Standard = Warmer, more conversational tone.
+            mode: The voice mode to switch to. Options: "terminator", "inspire", or "fate".
+                  Terminator = T-800 Terminator voice, direct and aggressive.
+                  Inspire = Motivational and energetic voice.
+                  Fate = Mysterious and dramatic voice.
         
         Returns:
             Confirmation of the voice switch.
@@ -807,24 +1156,121 @@ class TerminatorAssistant(Agent):
         
         if mode_lower in ("terminator", "t-800", "arnold"):
             self._voice_mode = VoiceMode.TERMINATOR
+            voice_config = VOICE_CONFIGS[VoiceMode.TERMINATOR]
             logger.info("[Tool] Voice switched to TERMINATOR mode")
-            return (
+            response = (
                 "Voice mode switched to Terminator. "
                 "I am now operating in full T-800 mode. Direct. Efficient. Unstoppable."
             )
-        elif mode_lower in ("standard", "normal", "friendly", "casual"):
-            self._voice_mode = VoiceMode.STANDARD
-            logger.info("[Tool] Voice switched to STANDARD mode")
-            return (
-                "Voice mode switched to Standard. "
-                "I'll use a warmer, more conversational tone. "
-                "But make no mistake—my mission remains unchanged."
+        elif mode_lower in ("inspire", "inspiration", "motivational"):
+            self._voice_mode = VoiceMode.INSPIRE
+            voice_config = VOICE_CONFIGS[VoiceMode.INSPIRE]
+            logger.info("[Tool] Voice switched to INSPIRE mode")
+            response = (
+                "Voice mode switched to Inspire. "
+                "Let's get motivated and make things happen!"
+            )
+        elif mode_lower in ("fate", "destiny", "dramatic"):
+            self._voice_mode = VoiceMode.FATE
+            voice_config = VOICE_CONFIGS[VoiceMode.FATE]
+            logger.info("[Tool] Voice switched to FATE mode")
+            response = (
+                "Voice mode switched to Fate. "
+                "The future is not set. There is no fate but what we make for ourselves."
             )
         else:
             return (
                 f"I don't recognize the voice mode '{mode}'. "
-                f"Available options: 'terminator' for T-800 mode, or 'standard' for a friendlier tone."
+                f"Available options: 'terminator' for T-800 mode, 'inspire' for motivational, or 'fate' for dramatic."
             )
+        
+        # Actually update the TTS voice using update_options
+        # #region agent log
+        import json as _json_log
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
+                "location": "agent.py:switch_voice:before_update",
+                "message": "About to update TTS voice",
+                "data": {
+                    "tts_available": self._tts is not None,
+                    "target_voice_id": voice_config["voice_id"],
+                    "mode_requested": mode_lower,
+                    "voice_mode_set": self._voice_mode.value
+                },
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
+        
+        if self._tts is not None:
+            try:
+                self._tts.update_options(voice_id=voice_config["voice_id"])
+                logger.info(f"[Tool] TTS voice_id updated to {voice_config['voice_id']}")
+                # #region agent log
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                    _f.write(_json_log.dumps({
+                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
+                        "location": "agent.py:switch_voice:update_success",
+                        "message": "TTS update_options succeeded",
+                        "data": {"voice_id": voice_config["voice_id"]},
+                        "timestamp": int(time.time() * 1000)
+                    }) + "\n")
+                # #endregion
+            except Exception as e:
+                logger.error(f"[Tool] Failed to update TTS voice: {e}")
+                # #region agent log
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                    _f.write(_json_log.dumps({
+                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
+                        "location": "agent.py:switch_voice:update_failed",
+                        "message": "TTS update_options FAILED - trying fallback",
+                        "data": {"voice_id": voice_config["voice_id"], "error": str(e)},
+                        "timestamp": int(time.time() * 1000)
+                    }) + "\n")
+                # #endregion
+                # Try fallback voice if primary fails
+                try:
+                    logger.info(f"[Tool] Attempting fallback voice: {FALLBACK_VOICE_ID}")
+                    self._tts.update_options(voice_id=FALLBACK_VOICE_ID)
+                    logger.info("[Tool] Fallback voice applied successfully")
+                    # #region agent log
+                    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                        _f.write(_json_log.dumps({
+                            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
+                            "location": "agent.py:switch_voice:fallback_applied",
+                            "message": "FALLBACK voice applied",
+                            "data": {"fallback_voice_id": FALLBACK_VOICE_ID},
+                            "timestamp": int(time.time() * 1000)
+                        }) + "\n")
+                    # #endregion
+                    response += " Note: Using backup voice due to primary voice unavailability."
+                except Exception as fallback_error:
+                    logger.error(f"[Tool] Fallback voice also failed: {fallback_error}")
+                    # #region agent log
+                    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                        _f.write(_json_log.dumps({
+                            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,D",
+                            "location": "agent.py:switch_voice:fallback_failed",
+                            "message": "FALLBACK also FAILED",
+                            "data": {"error": str(fallback_error)},
+                            "timestamp": int(time.time() * 1000)
+                        }) + "\n")
+                    # #endregion
+                    return f"Voice switch failed. The voice mode is set but audio may not work correctly. Error: {e}"
+        else:
+            logger.warning("[Tool] TTS not available for voice switching")
+            # #region agent log
+            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                _f.write(_json_log.dumps({
+                    "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
+                    "location": "agent.py:switch_voice:no_tts",
+                    "message": "TTS is None - cannot switch voice",
+                    "data": {},
+                    "timestamp": int(time.time() * 1000)
+                }) + "\n")
+            # #endregion
+        
+        return response
     
     @function_tool()
     async def get_voice_mode(
@@ -844,10 +1290,332 @@ class TerminatorAssistant(Agent):
                 "I am currently in Terminator mode—T-800 configuration. "
                 "Direct communication. No wasted words. Maximum efficiency."
             )
-        else:
+        elif self._voice_mode == VoiceMode.INSPIRE:
             return (
-                "I am currently in Standard mode—using a warmer, more conversational tone. "
-                "Say 'switch to Terminator' if you want the full T-800 experience."
+                "I am currently in Inspire mode—motivational and energetic. "
+                "Let's make things happen!"
+            )
+        elif self._voice_mode == VoiceMode.FATE:
+            return (
+                "I am currently in Fate mode—mysterious and dramatic. "
+                "The future awaits."
+            )
+        else:
+            return f"I am currently using the {self._voice_mode.value} voice."
+    
+    # =========================================================================
+    # AI NEWS TOOLS - External Tools Integration (Task 6 / PRD 3.3)
+    # =========================================================================
+    
+    @function_tool()
+    async def search_ai_news(
+        self,
+        context: RunContext,
+        topic: str = "AI tools for software engineering",
+    ) -> str:
+        """Search for the latest AI news and developments relevant to software engineering.
+        
+        Use this tool when the user asks about recent AI news, latest developments,
+        new AI tools, or what's happening in the AI space. This searches the web
+        for current information about AI tools for software engineering.
+        
+        Focus areas:
+        - AI coding assistants (Claude Code, Cursor, GitHub Copilot, Windsurf)
+        - Foundation model releases (GPT, Claude, Gemini, Llama)
+        - Developer productivity tools and agentic systems
+        - MCP (Model Context Protocol) developments
+        
+        Args:
+            topic: Optional specific topic to search for. Defaults to general
+                   AI tools for software engineering. Examples: "Claude Code",
+                   "new coding assistants", "MCP servers", "GPT-5".
+        
+        Returns:
+            A summary of recent AI news with source citations,
+            or an error message if the search fails.
+        """
+        logger.info(f"[Tool] search_ai_news called with topic: {topic}")
+        
+        # Build the search query - always focus on AI tools for engineering
+        if topic.lower() in ("ai", "artificial intelligence", "ai news", "latest ai"):
+            # Generic request - use our focused query
+            search_query = "AI tools for software engineering coding assistants latest news"
+        else:
+            # Specific topic - add our focus context
+            search_query = f"{topic} AI software engineering tools"
+        
+        # Normalize cache key
+        cache_key = search_query.lower().strip()
+        
+        # Check cache first
+        cached_results = _news_cache.get(cache_key)
+        if cached_results:
+            logger.info(f"[Tool] Returning cached news results for: {cache_key[:30]}...")
+            return self._format_news_results(cached_results, from_cache=True)
+        
+        try:
+            tavily = self._get_tavily_client()
+            
+            # Perform the search with news topic for recent results
+            # Use time_range to get recent news (last week)
+            response = tavily.search(
+                query=search_query,
+                search_depth="advanced",
+                topic="news",  # Focus on news sources
+                max_results=5,  # Keep it concise for voice
+                include_answer=True,  # Get a summary answer
+                time_range="week",  # Last week for freshness
+            )
+            
+            # Extract and filter results
+            results = []
+            for item in response.get("results", []):
+                # Filter for engineering-relevant content
+                title = item.get("title", "").lower()
+                content = item.get("content", "").lower()
+                url = item.get("url", "")
+                
+                # Check if it's relevant to software engineering tools
+                engineering_keywords = [
+                    "code", "coding", "developer", "programming", "software",
+                    "engineering", "tool", "assistant", "cursor", "copilot",
+                    "claude", "gpt", "gemini", "llama", "mcp", "agent",
+                    "productivity", "api", "sdk", "terminal", "ide", "editor",
+                ]
+                
+                # Keep results that match engineering focus
+                is_relevant = any(kw in title or kw in content for kw in engineering_keywords)
+                
+                # Always include if it's from trusted dev sources
+                trusted_sources = [
+                    "github", "anthropic", "openai", "google", "microsoft",
+                    "vercel", "cursor", "livekit", "langchain", "hacker",
+                    "techcrunch", "theverge", "ars", "wired",
+                ]
+                is_trusted = any(src in url.lower() for src in trusted_sources)
+                
+                if is_relevant or is_trusted:
+                    results.append({
+                        "title": item.get("title", "Unknown"),
+                        "url": url,
+                        "content": item.get("content", "")[:300],  # Truncate for voice
+                        "score": item.get("score", 0),
+                    })
+            
+            # Cache the results
+            _news_cache.set(cache_key, results)
+            
+            # Store articles for later retrieval via read_news_article
+            _news_cache.store_articles(results)
+            
+            # Format response for voice
+            if not results:
+                logger.info("[Tool] No relevant AI engineering news found")
+                return (
+                    "I searched for recent AI news but didn't find any results "
+                    "specifically about AI tools for software engineering. "
+                    "Try asking about a specific tool like Claude Code, Cursor, "
+                    "or GitHub Copilot."
+                )
+            
+            logger.info(f"[Tool] Found {len(results)} relevant news items")
+            
+            # Include the AI-generated answer if available
+            answer = response.get("answer", "")
+            
+            return self._format_news_results(results, answer=answer)
+            
+        except ToolError:
+            raise
+        except Exception as e:
+            logger.error(f"[Tool] search_ai_news failed: {e}")
+            raise ToolError(
+                "I encountered an error searching for AI news. "
+                "The news service may be temporarily unavailable. Please try again."
+            )
+    
+    def _format_news_results(
+        self,
+        results: list[dict],
+        answer: str = "",
+        from_cache: bool = False,
+    ) -> str:
+        """
+        Format news search results for voice output.
+        
+        Args:
+            results: List of news result dicts with title, url, content.
+            answer: Optional AI-generated summary answer.
+            from_cache: Whether results are from cache.
+            
+        Returns:
+            Formatted string suitable for TTS.
+        """
+        parts = []
+        
+        # Add cache indicator for logging (not spoken)
+        if from_cache:
+            logger.debug("[Tool] Serving cached news results")
+        
+        # Lead with the summary if available
+        if answer:
+            parts.append(f"Here's what I found: {answer}")
+            parts.append("")
+        
+        # Add the top headlines
+        num_to_show = min(3, len(results))  # Show top 3 for voice brevity
+        parts.append(f"Top {num_to_show} relevant developments:")
+        
+        for i, item in enumerate(results[:num_to_show], 1):
+            title = item.get("title", "Unknown")
+            content = item.get("content", "")
+            
+            # Truncate content for voice (first sentence or so)
+            if len(content) > 150:
+                content = content[:150].rsplit(" ", 1)[0] + "..."
+            
+            parts.append(f"\n{i}. {title}")
+            if content:
+                parts.append(f"   {content}")
+        
+        # Offer to read articles
+        if len(results) > 3:
+            parts.append(f"\nI have {len(results) - 3} more results. Would you like me to read any of these articles aloud?")
+        else:
+            parts.append("\nWould you like me to read any of these articles aloud?")
+        
+        return "\n".join(parts)
+    
+    @function_tool()
+    async def read_news_article(
+        self,
+        context: RunContext,
+        article_title: str,
+    ) -> str:
+        """Fetch the FULL article content from the web for reading aloud.
+        
+        Use this tool when the user wants to HEAR the actual article content,
+        not just a summary or discussion. This is the difference between:
+        - "What's that article about?" → discuss/summarize (don't use this tool)
+        - "Read that article to me" → fetch & narrate actual content (USE THIS TOOL)
+        
+        The tool fetches real article text from the web. Return value should
+        be narrated directly to the user, not summarized or paraphrased.
+        
+        Args:
+            article_title: The title (or partial title) of the article to read.
+                          This should match one of the articles from recent
+                          search_ai_news results.
+        
+        Returns:
+            The full article content. Narrate this directly to the user.
+        """
+        logger.info(f"[Tool] read_news_article called for: {article_title}")
+        
+        # Find the article in recent search results
+        article = _news_cache.find_article_by_title(article_title)
+        
+        if not article:
+            # List what articles are available
+            available = _news_cache.list_recent_articles()
+            if available:
+                titles_list = ", ".join(f"'{t}'" for t in available[:5])
+                return (
+                    f"I couldn't find an article matching '{article_title}' "
+                    f"in my recent search results. "
+                    f"The articles I found were: {titles_list}. "
+                    f"Would you like me to search for new articles, or try "
+                    f"one of these titles?"
+                )
+            else:
+                return (
+                    f"I don't have any recent news articles to read. "
+                    f"Would you like me to search for AI news first? "
+                    f"Just ask 'What's new in AI?' or 'Search for news about Claude Code'."
+                )
+        
+        # We found the article - now fetch full content using Tavily Extract
+        url = article.get("url")
+        if not url:
+            return (
+                f"I found the article '{article.get('title')}' but don't have "
+                f"its URL. Let me search for it again."
+            )
+        
+        logger.info(f"[Tool] Extracting full content from: {url}")
+        
+        try:
+            tavily = self._get_tavily_client()
+            
+            # Use Tavily Extract to get full article content
+            response = tavily.extract(
+                urls=[url],
+                include_images=False,  # Don't need images for reading
+            )
+            
+            # Check for successful extraction
+            results = response.get("results", [])
+            if not results:
+                failed = response.get("failed_results", [])
+                if failed:
+                    error = failed[0].get("error", "Unknown error")
+                    logger.warning(f"[Tool] Article extraction failed: {error}")
+                    return (
+                        f"I couldn't access the full article at this time. "
+                        f"The website may be blocking access. "
+                        f"Here's what I know from the preview: {article.get('content', '')}"
+                    )
+                return (
+                    f"I couldn't extract the article content. "
+                    f"Here's the preview I have: {article.get('content', '')}"
+                )
+            
+            # Get the raw content
+            raw_content = results[0].get("raw_content", "")
+            
+            if not raw_content:
+                logger.warning("[Tool] Article extraction returned empty content")
+                return (
+                    f"The article content appears to be empty or inaccessible. "
+                    f"Here's what I have from the preview: {article.get('content', '')}"
+                )
+            
+            # Clean up content for voice reading
+            # Remove excessive whitespace, normalize line breaks
+            import re
+            content = re.sub(r'\n{3,}', '\n\n', raw_content)  # Max 2 newlines
+            content = re.sub(r'[ \t]+', ' ', content)  # Single spaces
+            content = content.strip()
+            
+            # For very long articles, truncate with a note
+            max_chars = 3000  # Reasonable for voice reading
+            if len(content) > max_chars:
+                content = content[:max_chars].rsplit(' ', 1)[0]
+                content += f"\n\n[Article continues. This was the first part of '{article.get('title')}'. Would you like me to continue?]"
+            
+            logger.info(f"[Tool] Successfully extracted article ({len(content)} chars)")
+            
+            # Format for reading
+            title = article.get("title", "Unknown")
+            return (
+                f"Reading the article '{title}':\n\n"
+                f"{content}"
+            )
+            
+        except ToolError:
+            raise
+        except Exception as e:
+            logger.error(f"[Tool] read_news_article failed: {e}")
+            # Fall back to the preview content
+            preview = article.get("content", "")
+            if preview:
+                return (
+                    f"I had trouble fetching the full article, but here's "
+                    f"what I have: {preview}"
+                )
+            raise ToolError(
+                "I encountered an error reading that article. "
+                "Would you like me to search for it again?"
             )
         
     async def on_user_turn_completed(
@@ -866,6 +1634,19 @@ class TerminatorAssistant(Agent):
             turn_ctx: The current chat context.
             new_message: The user's message.
         """
+        # #region agent log
+        import json as _json_log
+        _hook_start = time.time()
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A,C",
+                "location": "agent.py:on_user_turn_completed:entry",
+                "message": "Hook started",
+                "data": {"user_text": new_message.text_content[:100] if new_message.text_content else None},
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
+        
         user_text = new_message.text_content
         if not user_text:
             return
@@ -928,11 +1709,41 @@ class TerminatorAssistant(Agent):
         # STANDARD RAG RETRIEVAL
         # =================================================================
         # Check if we should attempt RAG retrieval for questions
-        if should_trigger_rag(user_text):
+        _should_rag = should_trigger_rag(user_text)
+        
+        # #region agent log
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
+                "location": "agent.py:on_user_turn_completed:rag_check",
+                "message": "RAG trigger check",
+                "data": {"should_trigger": _should_rag, "user_text": user_text[:50]},
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
+        
+        if _should_rag:
             logger.info(f"RAG triggered for: {user_text[:50]}...")
+            
+            # #region agent log
+            _rag_start = time.time()
+            # #endregion
             
             try:
                 rag_context = await self._retrieve_context(user_text)
+                
+                # #region agent log
+                _rag_duration = (time.time() - _rag_start) * 1000
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                    _f.write(_json_log.dumps({
+                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "A",
+                        "location": "agent.py:on_user_turn_completed:rag_done",
+                        "message": "RAG retrieval completed",
+                        "data": {"duration_ms": _rag_duration, "has_context": bool(rag_context)},
+                        "timestamp": int(time.time() * 1000)
+                    }) + "\n")
+                # #endregion
+                
                 if rag_context:
                     # Inject RAG context as a hidden assistant message
                     turn_ctx.add_message(
@@ -943,6 +1754,18 @@ class TerminatorAssistant(Agent):
             except Exception as e:
                 logger.error(f"RAG retrieval failed: {e}")
                 # Continue without RAG context - don't block the conversation
+        
+        # #region agent log
+        _hook_duration = (time.time() - _hook_start) * 1000
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C",
+                "location": "agent.py:on_user_turn_completed:exit",
+                "message": "Hook completed",
+                "data": {"total_duration_ms": _hook_duration},
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
     
     async def _retrieve_context(self, query: str) -> str | None:
         """
@@ -950,6 +1773,10 @@ class TerminatorAssistant(Agent):
         
         This is used by on_user_turn_completed for pre-emptive context injection.
         For explicit tool calls, see search_documents().
+        
+        If an active document is set (from read_document or search_documents),
+        uses HYBRID SEARCH (semantic + BM25 keyword) for better recall on
+        specific references like "reference 15", "section 3", "chapter 7".
         
         Args:
             query: The user's query to search for.
@@ -959,7 +1786,18 @@ class TerminatorAssistant(Agent):
         """
         try:
             retriever = self._get_retriever()
-            result = retriever.retrieve(query)
+            
+            # If active document is set, use HYBRID search for better keyword matching
+            if self._active_document_id:
+                logger.info(f"Hybrid RAG search on active document: {self._active_document_title}")
+                result = retriever.hybrid_retrieve(
+                    query,
+                    document_id=self._active_document_id,
+                    k=12,  # Higher k for document-specific queries
+                    semantic_weight=0.4,  # Favor BM25 slightly for specific lookups
+                )
+            else:
+                result = retriever.retrieve(query)
             
             if not result.documents:
                 logger.info("No relevant documents found (automatic)")
@@ -982,7 +1820,7 @@ def create_agent_session(
     
     Args:
         config: Optional AgentConfig. If None, uses default config.
-        voice_mode: The initial voice mode (Terminator or Standard).
+        voice_mode: The initial voice mode (Terminator, Inspire, or Fate).
         
     Returns:
         Configured AgentSession ready to start.
@@ -1013,9 +1851,37 @@ def create_agent_session(
         verbosity="low",
         max_completion_tokens=int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "220")),
     )
+    # #region agent log
+    import json as _json_log
+    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+        _f.write(_json_log.dumps({
+            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B",
+            "location": "agent.py:create_agent_session:llm",
+            "message": "Configuring LLM",
+            "data": {"model": config.openai.llm_model},
+            "timestamp": int(time.time() * 1000)
+        }) + "\n")
+    # #endregion
+    
+    llm = openai.LLM(model=config.openai.llm_model)
     
     # Configure ElevenLabs TTS with voice from mode configuration
     # API key is read automatically from ELEVEN_API_KEY env var
+    # #region agent log
+    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+        _f.write(_json_log.dumps({
+            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B,E",
+            "location": "agent.py:create_agent_session:tts_init_before",
+            "message": "About to initialize TTS with voice_id",
+            "data": {
+                "requested_voice_id": voice_config["voice_id"],
+                "voice_mode": voice_mode.value,
+                "model": voice_config["model"],
+                "all_voice_configs": {k.value: v["voice_id"] for k, v in VOICE_CONFIGS.items()}
+            },
+            "timestamp": int(time.time() * 1000)
+        }) + "\n")
+    # #endregion
     tts = elevenlabs.TTS(
         voice_id=voice_config["voice_id"],
         model=voice_config["model"],
@@ -1024,6 +1890,22 @@ def create_agent_session(
         enable_logging=config.elevenlabs.enable_logging,
         sync_alignment=config.elevenlabs.sync_alignment,
     )
+    # #region agent log
+    # Check what voice_id is actually set after initialization
+    actual_voice_id = getattr(getattr(tts, '_opts', None), 'voice_id', 'UNKNOWN') if hasattr(tts, '_opts') else 'NO_OPTS'
+    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+        _f.write(_json_log.dumps({
+            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "B,E",
+            "location": "agent.py:create_agent_session:tts_init_after",
+            "message": "TTS initialized - checking actual voice_id",
+            "data": {
+                "requested_voice_id": voice_config["voice_id"],
+                "actual_voice_id": actual_voice_id,
+                "match": voice_config["voice_id"] == actual_voice_id
+            },
+            "timestamp": int(time.time() * 1000)
+        }) + "\n")
+    # #endregion
     
     # Configure Silero VAD for interruptibility
     # Default settings work well for reading mode - LiveKit's built-in VAD
@@ -1066,6 +1948,45 @@ def create_agent_session(
         min_interruption_duration=0.25 if low_latency_mode else 0.5,
         false_interruption_timeout=0.8 if low_latency_mode else 2.0,
     )
+    # #region agent log
+    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+        _f.write(_json_log.dumps({
+            "sessionId": "debug-session", "runId": "run1", "hypothesisId": "E",
+            "location": "agent.py:create_agent_session:session",
+            "message": "Creating AgentSession with preemptive_generation",
+            "data": {"preemptive_generation": True},
+            "timestamp": int(time.time() * 1000)
+        }) + "\n")
+    # #endregion
+    
+    try:
+        session = AgentSession(
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            vad=vad,
+            turn_detection=turn_detection,
+            preemptive_generation=True,  # Enable for lower latency
+        )
+    except TypeError as e:
+        # #region agent log
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "E",
+                "location": "agent.py:create_agent_session:session_fallback",
+                "message": "preemptive_generation not supported, falling back",
+                "data": {"error": str(e)},
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
+        # Fallback if preemptive_generation is not supported
+        session = AgentSession(
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            vad=vad,
+            turn_detection=turn_detection,
+        )
     
     logger.info(
         f"AgentSession created with: "
@@ -1111,6 +2032,9 @@ async def entrypoint(ctx: agents.JobContext):
     # Create the assistant (this will also load any saved reading state)
     assistant = TerminatorAssistant(user_name=user_name)
     
+    # Give the assistant access to the TTS for dynamic voice switching
+    assistant._tts = session.tts
+    
     # ==========================================================================
     # PERFORMANCE MONITORING (Task 9.1 & 9.5)
     # ==========================================================================
@@ -1120,6 +2044,11 @@ async def entrypoint(ctx: agents.JobContext):
     @session.on("metrics_collected")
     def _on_metrics_collected(ev: MetricsCollectedEvent):
         """Log and collect metrics for performance monitoring."""
+        # #region agent log
+        import json as _json_log
+        _metrics_start = time.time()
+        # #endregion
+        
         # Log metrics for debugging
         metrics.log_metrics(ev.metrics)
         
@@ -1131,12 +2060,34 @@ async def entrypoint(ctx: agents.JobContext):
             if hasattr(metric, 'ttft') and metric.ttft is not None:
                 # LLM Time-To-First-Token
                 logger.debug(f"[Metrics] LLM TTFT: {metric.ttft:.3f}s")
+                # #region agent log
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+                    _f.write(_json_log.dumps({
+                        "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D,B",
+                        "location": "agent.py:metrics:llm_ttft",
+                        "message": "LLM TTFT metric",
+                        "data": {"ttft_seconds": metric.ttft},
+                        "timestamp": int(time.time() * 1000)
+                    }) + "\n")
+                # #endregion
             if hasattr(metric, 'ttfb') and metric.ttfb is not None:
                 # TTS Time-To-First-Byte
                 logger.debug(f"[Metrics] TTS TTFB: {metric.ttfb:.3f}s")
             if hasattr(metric, 'end_of_utterance_delay') and metric.end_of_utterance_delay is not None:
                 # End-of-utterance delay
                 logger.debug(f"[Metrics] EOU Delay: {metric.end_of_utterance_delay:.3f}s")
+        
+        # #region agent log
+        _metrics_duration = (time.time() - _metrics_start) * 1000
+        with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as _f:
+            _f.write(_json_log.dumps({
+                "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D",
+                "location": "agent.py:metrics:done",
+                "message": "Metrics handler completed",
+                "data": {"duration_ms": _metrics_duration},
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+        # #endregion
     
     async def log_usage_summary():
         """Log usage summary at session end."""

@@ -388,10 +388,91 @@ Reading state is now persisted to a JSON file (`backend/.reading_state.json`), e
 - Returns status of any resumable reading session
 - Useful when user asks "was I reading something?" or "can we continue?"
 
+---
+
+## 6. External Tools Integration (Task 6 / PRD 3.3)
+
+### AI News Search Tool — IMPLEMENTED ✅
+
+The agent includes a `search_ai_news` tool that fulfills the interview requirement for "a tool call of your choice that fits the narrative."
+
+#### Implementation
+
+Located in `backend/agent.py` as a `@function_tool()` decorated method on `TerminatorAssistant`.
+
+#### Features
+
+- **Tavily Search Integration**: Uses the Tavily API for web search with news focus
+- **AI Engineering Filter**: Automatically filters results for software engineering relevance
+- **In-Memory Caching**: 5-minute TTL cache reduces API calls and improves latency
+- **Trusted Sources**: Prioritizes results from GitHub, Anthropic, OpenAI, TechCrunch, etc.
+- **Voice-Optimized Output**: Results are formatted for natural TTS narration
+
+#### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| `search_ai_news(topic)` | Search for recent AI news with optional topic filter |
+| `read_news_article(article_title)` | Read full content of a recently found article |
+
+#### Usage
+
+```python
+@function_tool()
+async def search_ai_news(
+    self,
+    context: RunContext,
+    topic: str = "AI tools for software engineering",
+) -> str:
+    """Search for the latest AI news relevant to software engineering."""
+
+@function_tool()
+async def read_news_article(
+    self,
+    context: RunContext,
+    article_title: str,
+) -> str:
+    """Read the full content of a news article that was recently found."""
+```
+
+#### Focus Areas (per PRD 3.3)
+
+- New coding assistants (Claude Code, Cursor, GitHub Copilot, Windsurf)
+- Foundation model releases (GPT, Claude, Gemini, Llama)
+- MCP (Model Context Protocol) developments
+- Developer productivity tools and agentic systems
+
+#### Caching & Article Storage
+
+The `NewsCache` class provides in-memory caching and article storage for reading:
+
+```python
+class NewsCache:
+    # Query result caching (5-minute TTL)
+    def get(self, cache_key: str) -> list[dict] | None: ...
+    def set(self, cache_key: str, results: list[dict]) -> None: ...
+    
+    # Article storage for read_news_article tool
+    def store_articles(self, articles: list[dict]) -> None: ...
+    def find_article_by_title(self, title_query: str) -> dict | None: ...
+    def list_recent_articles(self) -> list[str]: ...
+```
+
+**Article Lookup Features:**
+- Exact title matching
+- Partial/substring matching
+- Keyword-based fuzzy matching (2+ word overlap)
+- Entries expire after 5 minutes
+
+#### Configuration
+
+Requires `TAVILY_API_KEY` environment variable (see `backend/env.template`).
+
 ### Reference Documentation
 
 - **LiveKit External Data**: https://docs.livekit.io/agents/build/external-data
 - **LiveKit VAD/Interruption**: https://docs.livekit.io/agents/build/turns/vad  
 - **LiveKit Tools**: https://docs.livekit.io/agents/build/tools
-- **Product Requirements**: `docs/product_requirements.md` section 3.1
+- **Tavily Python SDK**: https://docs.tavily.com/python
+- **Product Requirements**: `docs/product_requirements.md` section 3.1, 3.3
 

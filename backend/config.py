@@ -33,8 +33,9 @@ class LiveKitConfig:
 class OpenAIConfig:
     """OpenAI API settings."""
     api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
-    # LLM model for conversation
-    llm_model: str = "gpt-5-nano-2025-08-07"
+    # LLM model for conversation - use gpt-4o-mini for fast, affordable responses
+    # Note: gpt-5-nano-2025-08-07 is quite slow
+    llm_model: str = "gpt-4o-mini"
     # Embedding model for RAG
     embedding_model: str = "text-embedding-3-small"
     
@@ -60,9 +61,13 @@ class ElevenLabsConfig:
     api_key: str = field(default_factory=lambda: os.getenv("ELEVEN_API_KEY", ""))
     
     # Voice IDs for different modes
-    voice_id: str = "8DGMp3sPQNZOuCfSIxxE"  # Default: Arnold-style Terminator voice
-    voice_id_terminator: str = "8DGMp3sPQNZOuCfSIxxE"  # Arnold/Terminator
-    voice_id_standard: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel - warm, conversational
+    # TERMINATOR: custom voice that works
+    # INSPIRE/FATE: ElevenLabs premade voices (original custom ones aren't accessible)
+    voice_id: str = "8DGMp3sPQNZOuCfSIxxE"  # Default: T-800 Terminator voice (custom)
+    voice_id_terminator: str = "8DGMp3sPQNZOuCfSIxxE"  # T-800 Terminator voice (custom)
+    voice_id_inspire: str = "TxGEqnHWrfWFTfGW9XjX"  # Josh - motivational (premade)
+    voice_id_fate: str = "pNInz6obpgDQGcFmaJgB"  # Adam - dramatic (premade)
+    voice_id_fallback: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel - reliable fallback
     
     # Models: default to low-latency streaming models for responsiveness.
     # Valid examples: eleven_turbo_v2_5, eleven_flash_v2_5, eleven_multilingual_v2

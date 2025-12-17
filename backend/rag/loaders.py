@@ -46,6 +46,30 @@ class DocumentLoaderFactory:
     ]
     
     @staticmethod
+    def _fetch_youtube_title_oembed(url: str) -> Optional[str]:
+        """
+        Fetch YouTube video title using the oEmbed API.
+        This is the most reliable method as it's an official YouTube API.
+        """
+        try:
+            import json
+            oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            }
+            req = urllib.request.Request(oembed_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                title = data.get('title', '').strip()
+                if title and title not in ['Untitled', 'Unknown', '']:
+                    logger.info(f"Got YouTube title from oEmbed API: {title}")
+                    return title
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to fetch YouTube title via oEmbed: {e}")
+            return None
+    
+    @staticmethod
     def _fetch_page_title(url: str) -> Optional[str]:
         """
         Fetch the <title> tag from a URL using BeautifulSoup.
@@ -206,11 +230,16 @@ class DocumentLoaderFactory:
         documents = []
         
         try:
-            # First, try to get title by scraping the page (most reliable)
-            logger.info(f"Fetching YouTube video title from page: {url}")
-            title = cls._fetch_page_title(url)
-            if title:
-                logger.info(f"Extracted title from page: {title}")
+            # First, try oEmbed API (most reliable for YouTube)
+            logger.info(f"Fetching YouTube video title via oEmbed API: {url}")
+            title = cls._fetch_youtube_title_oembed(url)
+            
+            # Fallback to page scraping if oEmbed fails
+            if not title:
+                logger.info("oEmbed failed, trying page scraping...")
+                title = cls._fetch_page_title(url)
+                if title:
+                    logger.info(f"Extracted title from page: {title}")
             
             # Load transcript using YoutubeLoader
             loader = YoutubeLoader.from_youtube_url(
@@ -221,12 +250,19 @@ class DocumentLoaderFactory:
             )
             documents = loader.load()
             
-            # If we didn't get title from page, try from loader metadata
+            # If we still don't have title, try from loader metadata
             if not title and documents and "title" in documents[0].metadata:
                 loader_title = documents[0].metadata.get("title")
                 if loader_title and loader_title not in ["Untitled", "Unknown", ""]:
                     title = loader_title
                     logger.info(f"Got title from YoutubeLoader metadata: {title}")
+            
+            # Last resort: extract video ID and use as title
+            if not title:
+                video_id = cls._extract_youtube_video_id(url)
+                if video_id:
+                    title = f"YouTube Video ({video_id})"
+                    logger.info(f"Using video ID as fallback title: {title}")
             
             # Update document metadata with the title
             if title:

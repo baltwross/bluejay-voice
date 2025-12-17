@@ -1,14 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Skull, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
   useConnectionState,
+  useChat,
 } from '@livekit/components-react';
 import '@livekit/components-styles';
 
 import { cn } from './utils';
-import { useConnection, useDocuments } from './hooks';
+import { useConnection, useDocuments, useTranscript } from './hooks';
 import {
   AgentVisualizer,
   Transcript,
@@ -26,6 +27,7 @@ export const App = () => {
   const {
     connectionState: tokenState,
     token,
+    roomName,
     serverUrl,
     connect,
     disconnect: disconnectToken,
@@ -48,6 +50,15 @@ export const App = () => {
     setShouldConnect(false);
     disconnectToken();
   }, [disconnectToken]);
+
+  // Auto-connect on page load (runs once on mount)
+  const hasAutoConnected = useRef(false);
+  useEffect(() => {
+    if (!hasAutoConnected.current) {
+      hasAutoConnected.current = true;
+      handleConnect();
+    }
+  }, [handleConnect]);
 
   // Determine effective connection state
   const effectiveConnectionState: ConnectionState =
@@ -97,7 +108,7 @@ export const App = () => {
             className="flex-1 flex flex-col min-h-0"
           >
             <RoomAudioRenderer />
-            <ConnectedContent onDisconnect={handleDisconnect} />
+            <ConnectedContent onDisconnect={handleDisconnect} roomName={roomName} />
           </LiveKitRoom>
         ) : (
           <DisconnectedContent
@@ -167,11 +178,14 @@ const Header = ({ connectionState }: HeaderProps) => {
  */
 interface ConnectedContentProps {
   onDisconnect: () => void;
+  roomName: string | null;
 }
 
-const ConnectedContent = ({ onDisconnect }: ConnectedContentProps) => {
+const ConnectedContent = ({ onDisconnect, roomName }: ConnectedContentProps) => {
   const roomConnectionState = useConnectionState();
   const { ingest, isIngesting, documents } = useDocuments();
+  const { send: sendChatMessage } = useChat();
+  const { messages: transcriptMessages, saveTranscript } = useTranscript({ roomName });
 
   // Map LiveKit connection state to our type
   const connectionState: ConnectionState =
@@ -183,17 +197,43 @@ const ConnectedContent = ({ onDisconnect }: ConnectedContentProps) => {
       ? 'reconnecting'
       : 'disconnected';
 
-  // Handle content ingestion
+  // Handle disconnect with transcript saving
+  const handleDisconnectWithSave = useCallback(async () => {
+    // Save transcript before disconnecting
+    if (transcriptMessages.length > 0) {
+      console.log(`Saving transcript with ${transcriptMessages.length} messages...`);
+      await saveTranscript();
+    }
+    onDisconnect();
+  }, [transcriptMessages.length, saveTranscript, onDisconnect]);
+
+  // Handle content ingestion and notify the agent
   const handleIngest = useCallback(
     async (input: { type: 'pdf' | 'youtube' | 'web' | 'file'; value: string | File }) => {
       try {
-        await ingest(input);
+        const result = await ingest(input);
+        
+        // Notify the agent about the newly ingested document via chat
+        const typeLabel = input.type === 'youtube' ? 'YouTube video' 
+          : input.type === 'pdf' ? 'PDF document'
+          : input.type === 'web' ? 'web article'
+          : 'file';
+        
+        const notificationMessage = `[SYSTEM] I just shared a ${typeLabel} with you: "${result.title}". It has been added to your knowledge base.`;
+        
+        try {
+          await sendChatMessage(notificationMessage);
+          console.log('Agent notified of new document:', result.title);
+        } catch (chatError) {
+          console.warn('Failed to notify agent via chat:', chatError);
+          // Don't fail the ingestion if chat notification fails
+        }
       } catch (error) {
         console.error('Ingestion failed:', error);
         throw error;
       }
     },
-    [ingest]
+    [ingest, sendChatMessage]
   );
 
   return (
@@ -212,7 +252,7 @@ const ConnectedContent = ({ onDisconnect }: ConnectedContentProps) => {
         <ControlPanel
           connectionState={connectionState}
           onConnect={() => {}}
-          onDisconnect={onDisconnect}
+          onDisconnect={handleDisconnectWithSave}
           className="flex-shrink-0"
         />
 

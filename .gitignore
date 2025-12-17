@@ -27,6 +27,10 @@ data/documents/
 chroma_db/
 .env
 
+# Transcripts (for debugging, keep .gitkeep)
+transcripts/*
+!transcripts/.gitkeep
+
 # Reading session state (persisted for resume across restarts)
 backend/.reading_state.json
 
@@ -131,3 +135,6 @@ temp/
 venv/bin/coloredlogs
 
 .taskmaster/tasks/tasks.json
+testsprite_tests/standard_prd.json
+testsprite_tests/*
+
