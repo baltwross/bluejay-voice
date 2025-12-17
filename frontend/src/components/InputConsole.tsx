@@ -217,25 +217,26 @@ export const InputConsole = ({
   return (
     <div
       className={cn(
-        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4',
+        // Compact padding on mobile
+        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-2 sm:p-3',
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-terminator-border">
-        <span className="text-terminator-red text-xs font-mono tracking-wider">
-          ▸ SHARE WITH TERMINATOR
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3 pb-1.5 sm:pb-2 border-b border-terminator-border">
+        <span className="text-terminator-red text-[10px] sm:text-xs font-mono tracking-wider">
+          ▸ SHARE
         </span>
       </div>
 
-      {/* Drop Zone */}
+      {/* Drop Zone - More compact on mobile */}
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          'border-2 border-dashed rounded-lg p-4 mb-3 transition-all duration-200',
-          'flex flex-col items-center justify-center min-h-[80px]',
+          'border-2 border-dashed rounded-lg p-1.5 sm:p-2 mb-1.5 sm:mb-2 transition-all duration-200',
+          'flex flex-col items-center justify-center min-h-[44px] sm:min-h-[56px]',
           isDragging
             ? 'border-terminator-cyan bg-terminator-cyan/10'
             : 'border-terminator-border hover:border-terminator-red/50',
@@ -243,16 +244,16 @@ export const InputConsole = ({
         )}
       >
         <Upload className={cn(
-          'w-6 h-6 mb-2 transition-colors',
+          'w-4 h-4 sm:w-5 sm:h-5 mb-0.5 sm:mb-1 transition-colors',
           isDragging ? 'text-terminator-cyan' : 'text-terminator-text-dim'
         )} />
-        <p className="text-xs font-mono text-terminator-text-dim text-center">
-          {isDragging ? 'DROP FILE HERE' : 'Drop PDF, DOCX, or TXT'}
+        <p className="text-[10px] sm:text-xs font-mono text-terminator-text-dim text-center">
+          {isDragging ? 'DROP FILE' : 'Drop or tap to upload'}
         </p>
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || status === 'uploading'}
-          className="mt-2 text-xs font-mono text-terminator-cyan hover:text-terminator-cyan/80 transition-colors"
+          className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs font-mono text-terminator-cyan hover:text-terminator-cyan/80 transition-colors hidden sm:inline"
         >
           or click to browse
         </button>
@@ -266,23 +267,27 @@ export const InputConsole = ({
       </div>
 
       {/* URL Input */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
+      <div className="space-y-1.5 sm:space-y-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="relative flex-1">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-terminator-text-dim">
-              {detectedType ? getSourceIcon(detectedType) : <Link className="w-4 h-4" />}
+            <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 text-terminator-text-dim">
+              {detectedType ? (
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4">{getSourceIcon(detectedType)}</div>
+              ) : (
+                <Link className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              )}
             </div>
             <input
               type="text"
               value={urlInput}
               onChange={handleUrlChange}
               onKeyDown={handleKeyDown}
-              placeholder="Paste URL (YouTube, article, PDF)..."
+              placeholder="Paste URL"
               disabled={disabled || status === 'uploading'}
               className={cn(
-                'w-full pl-10 pr-10 py-2.5 rounded',
+                'w-full pl-8 sm:pl-10 pr-8 sm:pr-10 py-1.5 sm:py-2 rounded',
                 'bg-terminator-darker border border-terminator-border',
-                'text-sm font-mono text-terminator-text placeholder:text-terminator-text-dim',
+                'text-xs sm:text-sm font-mono text-terminator-text placeholder:text-terminator-text-dim',
                 'focus:outline-none focus:border-terminator-red focus:shadow-glow-red',
                 'transition-all duration-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed'
@@ -294,9 +299,9 @@ export const InputConsole = ({
                   setUrlInput('');
                   setDetectedType(null);
                 }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-terminator-text-dim hover:text-terminator-text"
+                className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 text-terminator-text-dim hover:text-terminator-text"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             )}
           </div>
@@ -304,16 +309,16 @@ export const InputConsole = ({
             onClick={handleUrlSubmit}
             disabled={!urlInput.trim() || disabled || status === 'uploading'}
             className={cn(
-              'btn-hud-primary px-4 py-2.5 flex items-center gap-2',
+              'btn-hud-primary px-2 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-2',
               'disabled:opacity-50 disabled:cursor-not-allowed'
             )}
           >
             {status === 'uploading' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
             ) : (
-              <Upload className="w-4 h-4" />
+              <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             )}
-            <span className="hidden sm:inline">Share</span>
+            <span className="hidden sm:inline text-xs sm:text-sm">Share</span>
           </button>
         </div>
 
@@ -321,35 +326,35 @@ export const InputConsole = ({
         {statusMessage && (
           <div
             className={cn(
-              'flex items-center gap-2 text-xs font-mono p-2 rounded',
+              'flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono p-1.5 sm:p-2 rounded',
               status === 'success' && 'bg-green-500/10 text-green-400',
               status === 'error' && 'bg-terminator-red/10 text-terminator-red',
               status === 'uploading' && 'bg-terminator-cyan/10 text-terminator-cyan'
             )}
           >
-            {status === 'success' && <CheckCircle className="w-4 h-4" />}
-            {status === 'error' && <AlertCircle className="w-4 h-4" />}
-            {status === 'uploading' && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>{statusMessage}</span>
+            {status === 'success' && <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            {status === 'error' && <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            {status === 'uploading' && <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />}
+            <span className="truncate">{statusMessage}</span>
           </div>
         )}
       </div>
 
-      {/* Shared Files List */}
+      {/* Shared Files List - More compact on mobile */}
       {documents.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-terminator-border">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-terminator-red text-[10px] font-mono tracking-wider">
-              ▸ SHARED_DATA [{documents.length}]
+        <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-terminator-border">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
+            <span className="text-terminator-red text-[9px] sm:text-[10px] font-mono tracking-wider">
+              ▸ SHARED [{documents.length}]
             </span>
           </div>
           
           <div className="relative group">
              {/* Visible List (Top 2) */}
-             <div className="space-y-1">
+             <div className="space-y-0.5 sm:space-y-1">
                {documents.slice(0, 2).map(doc => (
-                 <div key={doc.id} className="flex items-center gap-2 text-xs font-mono text-terminator-text-dim">
-                   <div className="text-terminator-cyan/70">
+                 <div key={doc.id} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono text-terminator-text-dim">
+                   <div className="text-terminator-cyan/70 w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0">
                      {getSourceIcon(doc.sourceType)}
                    </div>
                    <span className="truncate">{doc.title}</span>
@@ -357,23 +362,23 @@ export const InputConsole = ({
                ))}
                
                {documents.length > 2 && (
-                 <div className="flex items-center gap-2 text-xs font-mono text-terminator-text-dim/70 pl-6 cursor-help hover:text-terminator-cyan transition-colors">
-                   <span>+ {documents.length - 2} more files...</span>
+                 <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono text-terminator-text-dim/70 pl-5 sm:pl-6 cursor-help hover:text-terminator-cyan transition-colors">
+                   <span>+ {documents.length - 2} more...</span>
                  </div>
                )}
              </div>
 
-             {/* Hover Drawer (All Files) */}
+             {/* Hover Drawer (All Files) - hidden on touch */}
              {documents.length > 2 && (
-               <div className="absolute bottom-full left-0 w-full mb-2 hidden group-hover:block z-50">
-                 <div className="bg-terminator-darker/95 backdrop-blur-md border border-terminator-border rounded-lg shadow-2xl p-3 max-h-[200px] overflow-y-auto custom-scrollbar">
-                   <div className="text-[10px] text-terminator-red font-mono mb-2 pb-1 border-b border-terminator-border/50 sticky top-0 bg-terminator-darker/95 backdrop-blur-md">
-                     ALL_SHARED_FILES
+               <div className="absolute bottom-full left-0 w-full mb-2 hidden sm:group-hover:block z-50">
+                 <div className="bg-terminator-darker/95 backdrop-blur-md border border-terminator-border rounded-lg shadow-2xl p-2 sm:p-3 max-h-[200px] overflow-y-auto custom-scrollbar">
+                   <div className="text-[9px] sm:text-[10px] text-terminator-red font-mono mb-1.5 sm:mb-2 pb-1 border-b border-terminator-border/50 sticky top-0 bg-terminator-darker/95 backdrop-blur-md">
+                     ALL FILES
                    </div>
-                   <div className="space-y-2">
+                   <div className="space-y-1 sm:space-y-2">
                      {documents.map(doc => (
-                       <div key={doc.id} className="flex items-center gap-2 text-xs font-mono text-terminator-text hover:text-terminator-cyan transition-colors p-1 rounded hover:bg-terminator-cyan/5">
-                         <div className="shrink-0 text-terminator-cyan">
+                       <div key={doc.id} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono text-terminator-text hover:text-terminator-cyan transition-colors p-0.5 sm:p-1 rounded hover:bg-terminator-cyan/5">
+                         <div className="shrink-0 text-terminator-cyan w-3.5 h-3.5 sm:w-4 sm:h-4">
                            {getSourceIcon(doc.sourceType)}
                          </div>
                          <span className="truncate" title={doc.title}>{doc.title}</span>
@@ -387,10 +392,10 @@ export const InputConsole = ({
         </div>
       )}
 
-      {/* Supported formats */}
-      <div className="mt-3 pt-3 border-t border-terminator-border">
-        <p className="text-[10px] font-mono text-terminator-text-dim">
-          SUPPORTED: YouTube • Web articles • PDF • DOCX • TXT
+      {/* Supported formats - hidden on very small screens */}
+      <div className="hidden sm:block mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-terminator-border">
+        <p className="text-[9px] sm:text-[10px] font-mono text-terminator-text-dim">
+          SUPPORTED: YouTube • Web • PDF • DOCX • TXT
         </p>
       </div>
     </div>

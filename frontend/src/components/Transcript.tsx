@@ -22,7 +22,7 @@ const TranscriptItem = ({ message }: TranscriptItemProps) => {
   return (
     <div
       className={cn(
-        'flex gap-3 p-3 rounded-lg transition-all duration-200',
+        'flex gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg transition-all duration-200',
         'border border-transparent',
         isAgent
           ? 'bg-terminator-red/5 hover:border-terminator-red/20'
@@ -30,46 +30,46 @@ const TranscriptItem = ({ message }: TranscriptItemProps) => {
         !message.isFinal && 'opacity-70'
       )}
     >
-      {/* Avatar */}
+      {/* Avatar - smaller on mobile */}
       <div
         className={cn(
-          'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
+          'flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center',
           isAgent
             ? 'bg-terminator-red/20 text-terminator-red'
             : 'bg-terminator-cyan/20 text-terminator-cyan'
         )}
       >
         {isAgent ? (
-          <Bot className="w-4 h-4" />
+          <Bot className="w-3 h-3 sm:w-4 sm:h-4" />
         ) : (
-          <User className="w-4 h-4" />
+          <User className="w-3 h-3 sm:w-4 sm:h-4" />
         )}
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Header */}
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1">
           <span
             className={cn(
-              'text-xs font-mono font-semibold tracking-wider',
+              'text-[10px] sm:text-xs font-mono font-semibold tracking-wider',
               isAgent ? 'text-terminator-red' : 'text-terminator-cyan'
             )}
           >
-            {isAgent ? 'T-800' : 'OPERATOR'}
+            {isAgent ? 'T-800' : 'USER'}
           </span>
-          <span className="text-[10px] font-mono text-terminator-text-dim">
+          <span className="text-[9px] sm:text-[10px] font-mono text-terminator-text-dim">
             {formatTime(message.timestamp)}
           </span>
           {!message.isFinal && (
-            <Loader2 className="w-3 h-3 text-terminator-text-dim animate-spin" />
+            <Loader2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-terminator-text-dim animate-spin" />
           )}
         </div>
 
         {/* Message text */}
         <p
           className={cn(
-            'text-sm font-mono leading-relaxed break-words',
+            'text-xs sm:text-sm font-mono leading-relaxed break-words',
             isAgent ? 'text-terminator-text' : 'text-terminator-text'
           )}
         >
@@ -82,15 +82,15 @@ const TranscriptItem = ({ message }: TranscriptItemProps) => {
 
 /** Empty state when no transcript */
 const EmptyState = ({ isConnected }: { isConnected: boolean }) => (
-  <div className="flex flex-col items-center justify-center h-full text-terminator-text-dim">
-    <AlertTriangle className="w-12 h-12 mb-4 opacity-30" />
-    <p className="font-mono text-sm">
+  <div className="flex flex-col items-center justify-center h-full text-terminator-text-dim py-4 sm:py-8">
+    <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-2 sm:mb-3 lg:mb-4 opacity-30" />
+    <p className="font-mono text-xs sm:text-sm">
       {isConnected ? 'AWAITING TRANSMISSION' : 'NO ACTIVE SESSION'}
     </p>
-    <p className="text-xs mt-2 opacity-50">
+    <p className="text-[10px] sm:text-xs mt-1 sm:mt-2 opacity-50 text-center px-4">
       {isConnected
         ? 'Start speaking to initiate conversation'
-        : 'Initialize connection to begin conversation'}
+        : 'Initialize connection to begin'}
     </p>
   </div>
 );
@@ -159,19 +159,19 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
   return (
     <div
       className={cn(
-        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-4 flex flex-col',
+        'hud-border rounded-lg bg-terminator-surface/50 backdrop-blur-sm p-2 sm:p-3 lg:p-4 flex flex-col',
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-terminator-border">
-        <span className="text-terminator-red text-xs font-mono tracking-wider">
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3 lg:mb-4 pb-1.5 sm:pb-2 border-b border-terminator-border">
+        <span className="text-terminator-red text-[10px] sm:text-xs font-mono tracking-wider">
           ▸ TRANSCRIPT
         </span>
         <span className="flex-1" />
         {messages.length > 0 && (
-          <span className="text-terminator-text-dim text-xs font-mono">
-            {messages.length} ENTRIES
+          <span className="text-terminator-text-dim text-[10px] sm:text-xs font-mono">
+            {messages.length}
           </span>
         )}
       </div>
@@ -179,7 +179,7 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
       {/* Messages List */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-3 min-h-0"
+        className="flex-1 overflow-y-auto space-y-2 sm:space-y-3 min-h-0"
       >
         {messages.length > 0 ? (
           messages.map((message) => (
@@ -191,10 +191,13 @@ export const Transcript = ({ className, isConnected = false }: TranscriptProps) 
       </div>
 
       {/* Footer - Transcript stats */}
-      <div className="pt-2 mt-2 border-t border-terminator-border">
-        <div className="flex items-center justify-between text-[10px] font-mono text-terminator-text-dim">
-          <span>
+      <div className="pt-1.5 sm:pt-2 mt-1.5 sm:mt-2 border-t border-terminator-border">
+        <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-terminator-text-dim">
+          <span className="hidden xs:inline">
             USER: {userTranscriptions?.length ?? 0} | AGENT: {agentTranscriptions?.length ?? 0}
+          </span>
+          <span className="xs:hidden">
+            {(userTranscriptions?.length ?? 0) + (agentTranscriptions?.length ?? 0)} msgs
           </span>
           <span className={cn(
             'flex items-center gap-1',
