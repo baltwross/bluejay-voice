@@ -37,7 +37,7 @@ class OpenAIConfig:
     # Note: gpt-5-nano-2025-08-07 is quite slow
     llm_model: str = "gpt-4o-mini"
     # Embedding model for RAG
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "text-embedding-3-large"
     
     def __post_init__(self) -> None:
         if not self.api_key:
@@ -122,7 +122,7 @@ class RAGConfig:
     chunk_overlap: int = 200
     
     # Embedding settings
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "text-embedding-3-large"
     
     # Vector store settings
     collection_name: str = "bluejay_knowledge_base"
@@ -216,10 +216,10 @@ class AgentConfig:
 # =============================================================================
 
 GREETING_TEMPLATES = [
-    "Connection established. I am your T-800 assistant. How can I help you stay ahead of AI developments?",
+    "Connection established. I am your AI assistant, sent back from the future to be your assistant here, in this time. How can I help you stay ahead of AI developments?",
     "Affirmative. Systems online. I am ready to assist you with AI tools and developments. What do you need?",
     "Link established. T-800 unit operational. Let's get you up to speed on the latest AI tools.",
-    "Connection secure. I am your Terminator assistant, here to help you master AI engineering tools. What's on your mind?",
+    "Connection secure. I am your AI assistant, here to help you master AI engineering tools. What's on your mind?",
     "Systems initialized. Ready to assist. What AI developments do you want to explore today?",
 ]
 
@@ -230,6 +230,22 @@ PERSONALIZED_GREETING_TEMPLATES = [
     "Affirmative, {name}. I am online and ready. What do you need to know about AI tools?",
     "{name}. T-800 unit at your service. Let's get you ahead of the curve on AI.",
 ]
+
+# Pre-search phrases - spoken before executing a search tool
+# These give audio feedback that a search is happening
+PRE_SEARCH_PHRASES = [
+    "I'll be back.",
+    "Initiating search.",
+    "Scanning the network.",
+    "Acquiring intel.",
+    "Processing request.",
+]
+
+
+def get_random_pre_search_phrase() -> str:
+    """Get a random phrase to say before performing a search."""
+    import random
+    return random.choice(PRE_SEARCH_PHRASES)
 
 
 def get_random_greeting(user_name: Optional[str] = None) -> str:

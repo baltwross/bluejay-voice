@@ -47,7 +47,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, openai, silero, elevenlabs, noise_cancellation
 
 from prompts import get_system_prompt, format_rag_context, should_trigger_rag
-from config import get_config, get_random_greeting
+from config import get_config, get_random_greeting, get_random_pre_search_phrase
 from rag.retriever import DocumentRetriever
 from rag.indexer import DocumentIndexer
 
@@ -212,8 +212,9 @@ VOICE_CONFIGS = {
         # Custom T-800 Terminator voice (verified working)
         "voice_id": "8DGMp3sPQNZOuCfSIxxE",
         "model": "eleven_multilingual_v2",
-        "stability": 0.5,
-        "similarity_boost": 0.75,
+        "stability": 0.26,
+        "similarity_boost": 0.80,
+        "speed": 1.14,
     },
     VoiceMode.INSPIRE: {
         # "Josh" - deep, American, motivational (premade - guaranteed to work)
@@ -347,6 +348,22 @@ class ReadingState:
             total_chunks=data.get("total_chunks", 0),
             last_updated=data.get("last_updated"),
         )
+
+    @staticmethod
+    def _resolve_state_file_path(file_path: Path) -> Path:
+        """
+        Resolve the actual file path to use for persistence.
+
+        Expected: `file_path` is a JSON file (default: `.reading_state.json`).
+        Reality (dev): A directory with that name can exist (e.g., created accidentally),
+        which would raise `IsADirectoryError` when calling `open()`.
+
+        If a directory is detected, we store the state inside it as `state.json`.
+        This avoids crashing the agent and allows the app to recover gracefully.
+        """
+        if file_path.exists() and file_path.is_dir():
+            return file_path / "state.json"
+        return file_path
     
     def save(self, file_path: Path = READING_STATE_FILE) -> bool:
         """
@@ -357,9 +374,11 @@ class ReadingState:
         """
         try:
             self.last_updated = datetime.now().isoformat()
-            with open(file_path, "w") as f:
+            resolved_file_path = self._resolve_state_file_path(file_path)
+            resolved_file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(resolved_file_path, "w") as f:
                 json.dump(self.to_dict(), f, indent=2)
-            logger.debug(f"Reading state saved to {file_path}")
+            logger.debug(f"Reading state saved to {resolved_file_path}")
             return True
         except Exception as e:
             logger.warning(f"Failed to save reading state: {e}")
@@ -374,11 +393,17 @@ class ReadingState:
             ReadingState if loaded successfully and not expired, None otherwise.
         """
         try:
-            if not file_path.exists():
+            resolved_file_path = cls._resolve_state_file_path(file_path)
+
+            if not resolved_file_path.exists():
                 logger.debug("No saved reading state found")
                 return None
+
+            if not resolved_file_path.is_file():
+                logger.warning(f"Reading state path is not a file: {resolved_file_path}")
+                return None
             
-            with open(file_path, "r") as f:
+            with open(resolved_file_path, "r") as f:
                 data = json.load(f)
             
             state = cls.from_dict(data)
@@ -399,9 +424,13 @@ class ReadingState:
             
             return None
             
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
             logger.warning(f"Failed to load reading state: {e}")
             cls.cleanup(file_path)
+            return None
+        except OSError as e:
+            # Includes IsADirectoryError, PermissionError, etc. We don't want the agent to crash.
+            logger.warning(f"Failed to read reading state from disk: {e}")
             return None
     
     @classmethod
@@ -413,9 +442,20 @@ class ReadingState:
             True if cleaned up successfully, False otherwise.
         """
         try:
-            if file_path.exists():
-                file_path.unlink()
-                logger.debug(f"Cleaned up reading state file: {file_path}")
+            resolved_file_path = cls._resolve_state_file_path(file_path)
+
+            if resolved_file_path.exists() and resolved_file_path.is_file():
+                resolved_file_path.unlink()
+                logger.debug(f"Cleaned up reading state file: {resolved_file_path}")
+
+            # If the original path was a directory and is now empty, remove it to self-heal.
+            if file_path.exists() and file_path.is_dir():
+                try:
+                    file_path.rmdir()
+                    logger.debug(f"Removed empty reading state directory: {file_path}")
+                except OSError:
+                    # Directory not empty or cannot be removed; ignore.
+                    pass
             return True
         except Exception as e:
             logger.warning(f"Failed to cleanup reading state: {e}")
@@ -807,6 +847,14 @@ class TerminatorAssistant(Agent):
         import re
         
         logger.info(f"[Tool] ingest_url called with: {url}")
+        
+        # Speak a pre-processing phrase to give audio feedback
+        try:
+            pre_search_phrase = get_random_pre_search_phrase()
+            logger.info(f"[Tool] Speaking pre-ingest phrase: {pre_search_phrase}")
+            await context.session.say(pre_search_phrase, allow_interruptions=True)
+        except Exception as e:
+            logger.warning(f"[Tool] Failed to speak pre-ingest phrase: {e}")
         
         try:
             indexer = self._get_indexer()
@@ -1286,6 +1334,16 @@ class TerminatorAssistant(Agent):
             logger.info(f"[Tool] Returning cached news results for: {cache_key[:30]}...")
             return self._format_news_results(cached_results, from_cache=True)
         
+        # Speak a pre-search phrase to give audio feedback before the search
+        # This lets the user know we're actually doing something
+        try:
+            pre_search_phrase = get_random_pre_search_phrase()
+            logger.info(f"[Tool] Speaking pre-search phrase: {pre_search_phrase}")
+            await context.session.say(pre_search_phrase, allow_interruptions=True)
+        except Exception as e:
+            # Don't fail the search if speech fails
+            logger.warning(f"[Tool] Failed to speak pre-search phrase: {e}")
+        
         try:
             tavily = self._get_tavily_client()
             
@@ -1568,6 +1626,7 @@ class TerminatorAssistant(Agent):
             new_message: The user's message.
         """
         user_text = new_message.text_content
+        
         if not user_text:
             return
         
@@ -1722,13 +1781,12 @@ def create_agent_session(
     )
     
     # Configure OpenAI LLM
-    # Keep the model fast and avoid unnecessary reasoning latency.
+    # Keep the model fast with low temperature for consistent responses.
+    # Note: reasoning_effort and verbosity are only for o1/o3 reasoning models,
+    # not applicable to gpt-4o-mini.
     llm = openai.LLM(
         model=config.openai.llm_model,
         temperature=0.2,
-        reasoning_effort="low",
-        verbosity="low",
-        max_completion_tokens=int(os.getenv("OPENAI_MAX_COMPLETION_TOKENS", "220")),
     )
     
     # Configure ElevenLabs TTS with voice from mode configuration
