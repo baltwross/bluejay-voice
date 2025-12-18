@@ -310,7 +310,7 @@ Resources:
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${ProjectName}-ecs-execution-role'
+      # RoleName: !Sub '${ProjectName}-ecs-execution-role'  <-- Removing fixed name
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -336,7 +336,7 @@ Resources:
   ECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${ProjectName}-ecs-task-role'
+      # RoleName: !Sub '${ProjectName}-ecs-task-role'  <-- Removing fixed name
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

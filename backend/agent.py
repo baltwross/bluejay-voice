@@ -1026,6 +1026,23 @@ class TerminatorAssistant(Agent):
         """
         import re
         
+        # #region agent log
+        try:
+            import json
+            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A",
+                    "location": "backend/agent.py:ingest_url",
+                    "message": "Tool ingest_url called",
+                    "data": {"url": url},
+                    "timestamp": datetime.now().isoformat()
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
+
         logger.info(f"[Tool] ingest_url called with: {url}")
         
         # Speak a pre-processing phrase to give audio feedback
@@ -1052,6 +1069,23 @@ class TerminatorAssistant(Agent):
             is_youtube = any(re.match(pattern, url) for pattern in youtube_patterns)
             is_pdf = url_lower.endswith(".pdf") or "/pdf" in url_lower
             
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A",
+                        "location": "backend/agent.py:ingest_url:detection",
+                        "message": "URL type detection",
+                        "data": {"url": url, "is_youtube": is_youtube, "is_pdf": is_pdf},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            
             # Route to appropriate indexer method
             if is_youtube:
                 logger.info(f"[Tool] Detected YouTube URL, extracting transcript...")
@@ -1066,6 +1100,23 @@ class TerminatorAssistant(Agent):
                 result = indexer.index_web(url)
                 content_type = "web article"
             
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A",
+                        "location": "backend/agent.py:ingest_url:result",
+                        "message": "Indexing result",
+                        "data": {"success": result.get("success"), "error": result.get("error")},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
+
             if result.get("success"):
                 title = result.get("title", "Unknown")
                 chunk_count = result.get("chunk_count", 0)
@@ -2162,3 +2213,4 @@ if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(entrypoint_fnc=entrypoint)
     )
+

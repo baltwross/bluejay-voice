@@ -237,12 +237,47 @@ class DocumentLoaderFactory:
     @classmethod
     def _load_youtube(cls, url: str) -> tuple[List[Document], Optional[str]]:
         """Load YouTube video transcript with robust title extraction using yt-dlp."""
+        # #region agent log
+        try:
+            import json
+            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "B",
+                    "location": "backend/rag/loaders.py:_load_youtube",
+                    "message": "Entering _load_youtube",
+                    "data": {"url": url},
+                    "timestamp": datetime.now().isoformat()
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        
         title = None
         documents = []
         
         try:
             # Extract video ID and normalize URL (removes extra query params)
             video_id = cls._extract_youtube_video_id(url)
+            
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "B",
+                        "location": "backend/rag/loaders.py:_load_youtube:video_id",
+                        "message": "Video ID extracted",
+                        "data": {"video_id": video_id, "url": url},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
+
             if video_id:
                 clean_url = f"https://www.youtube.com/watch?v={video_id}"
             else:
@@ -264,6 +299,23 @@ class DocumentLoaderFactory:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(clean_url, download=False)
+                
+                # #region agent log
+                try:
+                    import json
+                    with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                        f.write(json.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "B",
+                            "location": "backend/rag/loaders.py:_load_youtube:yt_dlp",
+                            "message": "yt-dlp extract_info result",
+                            "data": {"success": info is not None, "title": info.get('title') if info else None},
+                            "timestamp": datetime.now().isoformat()
+                        }) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 
                 # Validate that info was extracted successfully
                 if info is None:
@@ -389,6 +441,22 @@ class DocumentLoaderFactory:
             return documents, title
             
         except Exception as e:
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "B",
+                        "location": "backend/rag/loaders.py:_load_youtube:exception",
+                        "message": "Exception in _load_youtube",
+                        "data": {"error": str(e)},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
             logger.error(f"Error loading YouTube transcript: {e}")
             raise
     
@@ -475,6 +543,3 @@ class DocumentLoaderFactory:
         except Exception as e:
             logger.error(f"Error loading text: {e}")
             raise
-
-
-
