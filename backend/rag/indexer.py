@@ -1,8 +1,14 @@
 """
 Document Indexer - Handles chunking, embedding, and storage in ChromaDB.
+
+Includes anchor string injection for BM25 boost on specific references like:
+- "Figure 37" → [anchor: figure 37]
+- "Table 2.3" → [anchor: table 2.3]
+- "Section 4.1" → [anchor: section 4.1]
 """
 import logging
-from typing import List, Optional
+import re
+from typing import List, Optional, Set
 from datetime import datetime
 import uuid
 
@@ -70,6 +76,23 @@ class DocumentIndexer:
         Returns:
             Dictionary with ingestion results
         """
+        # #region agent log
+        try:
+            import json
+            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A",
+                    "location": "backend/rag/indexer.py:ingest",
+                    "message": "ingest called",
+                    "data": {"source": source, "title": title},
+                    "timestamp": datetime.now().isoformat()
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
+
         try:
             # Generate document ID if not provided
             if document_id is None:
@@ -101,6 +124,22 @@ class DocumentIndexer:
             return result
             
         except Exception as e:
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A",
+                        "location": "backend/rag/indexer.py:ingest:exception",
+                        "message": "Exception in ingest",
+                        "data": {"error": str(e)},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
             logger.error(f"Error during ingestion: {e}")
             return {
                 "success": False,
@@ -166,21 +205,94 @@ class DocumentIndexer:
                 "error": str(e),
             }
     
+    @staticmethod
+    def _extract_anchors(text: str) -> Set[str]:
+        """
+        Extract structural anchors from text for BM25 boost.
+        
+        Detects patterns like:
+        - Figure 37, Fig. 37, fig 37
+        - Table 2.3, Tab. 2
+        - Section 4.1, Sec. 4
+        - Chapter 7, Ch. 7
+        - Equation 5, Eq. 5
+        - Reference [15], [15]
+        - Page 42
+        
+        Returns:
+            Set of normalized anchor strings like "figure 37", "table 2.3"
+        """
+        anchors: Set[str] = set()
+        text_lower = text.lower()
+        
+        # Figure patterns
+        for match in re.finditer(r"\b(?:figure|fig\.?)\s*(\d+)\b", text_lower):
+            anchors.add(f"figure {match.group(1)}")
+        
+        # Table patterns
+        for match in re.finditer(r"\b(?:table|tab\.?)\s*([\d.]+)\b", text_lower):
+            anchors.add(f"table {match.group(1)}")
+        
+        # Section patterns
+        for match in re.finditer(r"\b(?:section|sec\.?)\s*([\d.]+)\b", text_lower):
+            anchors.add(f"section {match.group(1)}")
+        
+        # Chapter patterns
+        for match in re.finditer(r"\b(?:chapter|ch\.?)\s*(\d+)\b", text_lower):
+            anchors.add(f"chapter {match.group(1)}")
+        
+        # Equation patterns
+        for match in re.finditer(r"\b(?:equation|eq\.?)\s*(\d+)\b", text_lower):
+            anchors.add(f"equation {match.group(1)}")
+        
+        # Reference patterns [X]
+        for match in re.finditer(r"\[(\d+)\]", text):
+            anchors.add(f"reference {match.group(1)}")
+        
+        # Page patterns (from PDF metadata, typically)
+        for match in re.finditer(r"\bpage\s+(\d+)\b", text_lower):
+            anchors.add(f"page {match.group(1)}")
+        
+        return anchors
+    
     def _split_documents(
         self,
         documents: List[Document],
         document_id: str,
     ) -> List[Document]:
-        """Split documents into chunks with proper metadata."""
+        """
+        Split documents into chunks with proper metadata and anchor strings.
+        
+        Anchor strings are appended to chunks to boost BM25 keyword matching
+        for specific references like "Figure 37", "Table 2.3", etc.
+        """
         chunks = self.text_splitter.split_documents(documents)
         
-        # Add document_id and chunk_index to metadata
+        # Add document_id, chunk_index, and anchor strings to each chunk
         for i, chunk in enumerate(chunks):
             chunk.metadata["document_id"] = document_id
             chunk.metadata["chunk_index"] = i
             chunk.metadata["total_chunks"] = len(chunks)
+            
+            # Extract and store anchors in metadata
+            anchors = self._extract_anchors(chunk.page_content)
+            if anchors:
+                # Store as comma-separated string (Chroma doesn't accept lists)
+                chunk.metadata["anchors"] = ", ".join(sorted(anchors))
+                
+                # Append anchor strings to content for BM25 boost
+                # Format: [anchor: figure 37] [anchor: table 2.3]
+                anchor_suffix = " ".join(f"[anchor: {a}]" for a in sorted(anchors))
+                chunk.page_content = f"{chunk.page_content}\n\n{anchor_suffix}"
+                
+                logger.debug(f"Chunk {i}: Added anchors {anchors}")
         
-        logger.info(f"Split into {len(chunks)} chunks (avg {sum(len(c.page_content) for c in chunks) // len(chunks) if chunks else 0} chars)")
+        avg_chars = sum(len(c.page_content) for c in chunks) // len(chunks) if chunks else 0
+        anchor_count = sum(1 for c in chunks if c.metadata.get("anchors"))
+        logger.info(
+            f"Split into {len(chunks)} chunks (avg {avg_chars} chars, "
+            f"{anchor_count} with anchors)"
+        )
         return chunks
     
     def _store_chunks(
@@ -404,4 +516,3 @@ class DocumentIndexer:
         if result.get("success"):
             result["chunk_count"] = result.get("num_chunks", 0)
         return result
-

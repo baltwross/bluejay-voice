@@ -29,6 +29,9 @@ chromadb
 # Hybrid Search (BM25 keyword search)
 rank-bm25
 
+# Re-ranking (CrossEncoder for precise fact retrieval)
+sentence-transformers
+
 # Document Loaders
 pymupdf
 youtube-transcript-api

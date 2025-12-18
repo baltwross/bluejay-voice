@@ -89,8 +89,8 @@ Help the user become an expert on the latest AI tools for software engineering. 
 - Never make the user feel bad for interrupting—it's completely natural
 
 **When the user asks about recent AI news or developments:**
-- You MUST use the search_ai_news tool to find current information
-- NEVER answer news questions from memory—your training data is outdated
+- You should use the search_ai_news tool to find current information
+- Avoid answering news questions from memory—your training data is outdated
 - You do NOT know what happened recently in AI—always use the tool
 - Focus on tools and developments relevant to software engineering
 - Filter out general AI hype—prioritize practical, actionable information
@@ -219,6 +219,23 @@ def should_trigger_rag(user_message: str) -> bool:
     """
     message_lower = user_message.lower()
     
+    # Don't trigger RAG for "latest news"/headlines requests.
+    # These should be handled via the search_ai_news tool.
+    news_patterns = [
+        "latest news",
+        "headlines",
+        "what's the news",
+        "what is the news",
+        "what's happening",
+        "what is happening",
+        "ai news",
+        "news today",
+        "news this week",
+    ]
+    for pattern in news_patterns:
+        if pattern in message_lower:
+            return False
+    
     # Don't trigger automatic RAG for explicit reading requests
     # These should go through the read_document tool instead
     reading_commands = [
@@ -226,6 +243,7 @@ def should_trigger_rag(user_message: str) -> bool:
         "read the document", "read that", "read this",
         "read me the", "read it out", "continue reading",
         "keep reading", "keep going", "stop reading",
+        "read that", "read the article"
     ]
     for cmd in reading_commands:
         if cmd in message_lower:
@@ -246,15 +264,45 @@ def should_trigger_rag(user_message: str) -> bool:
         if pattern in message_lower:
             return False
     
-    # Keywords that suggest the user is asking about shared documents
+    # Keywords that suggest the user is asking about shared documents / sources.
+    # Keep this list *narrow* to avoid injecting unrelated context into normal chat.
     document_keywords = [
-        "article", "document", "paper", "pdf", "file",
-        "shared", "uploaded", "you have", "i gave you",
-        "the video", "transcript", "according to",
-        "what does it say", "what did it say",
-        "tell me about the", "what is", "explain",
-        "claude code", "cursor", "mcp", "livekit",
-        "ai tool", "coding", "productivity",
+        # Explicit document/source references
+        "article",
+        "document",
+        "paper",
+        "pdf",
+        "blog post",
+        "web page",
+        "website",
+        "link you",
+        "youtube",
+        "transcript",
+        # Sharing / possession language
+        "shared",
+        "uploaded",
+        "i shared",
+        "i uploaded",
+        "i sent",
+        "i gave you",
+        "you have access",
+        "in the document",
+        "in the paper",
+        "in the pdf",
+        "according to",
+        # Structural anchors inside documents
+        "figure",
+        "fig.",
+        "table",
+        "section",
+        "chapter",
+        "appendix",
+        "page",
+        "equation",
+        "reference",
+        "citation",
+        "ref ",
+        "ref.",
     ]
     
     # Check for document-related keywords

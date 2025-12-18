@@ -680,6 +680,187 @@ class TerminatorAssistant(Agent):
                 logger.error(f"Failed to initialize RAG retriever: {e}")
                 raise ToolError("Document retrieval system is currently unavailable.")
         return self._retriever
+
+    def _set_active_document(self, document_id: str, document_title: str) -> None:
+        """Set the active document used for automatic RAG filtering."""
+        self._active_document_id = document_id
+        self._active_document_title = document_title
+        logger.info(f"Active document set to: {document_title} ({document_id})")
+
+    def _get_last_user_message_text(self, turn_ctx: lk_llm.ChatContext) -> str | None:
+        """Get the most recent *previous* user message text from the chat context."""
+        items = getattr(turn_ctx, "items", None)
+        if not isinstance(items, list):
+            return None
+        for item in reversed(items):
+            if isinstance(item, lk_llm.ChatMessage) and item.role == "user":
+                text = item.text_content
+                if text:
+                    return text
+        return None
+
+    def _build_rag_query(self, turn_ctx: lk_llm.ChatContext, user_text: str) -> str:
+        """
+        Build a query string for retrieval.
+        
+        Live speech often arrives as short follow-ups ("it's figure 37"). When the
+        newest message looks like a continuation, we concatenate it with the
+        previous user message to improve retrieval recall.
+        """
+        user_text_clean = (user_text or "").strip()
+        if not user_text_clean:
+            return user_text_clean
+
+        lower = user_text_clean.lower()
+        has_explicit_question = ("?" in user_text_clean) or any(
+            kw in lower for kw in ("what", "why", "how", "when", "where", "which")
+        )
+        looks_like_continuation = (
+            len(user_text_clean) < 40
+            or lower.startswith(
+                (
+                    "it's",
+                    "it is",
+                    "thats",
+                    "that's",
+                    "figure",
+                    "fig",
+                    "also",
+                    "and",
+                    "no",
+                    "not",
+                    "wait",
+                    "hold on",
+                    "sorry",
+                )
+            )
+            or "it's not" in lower
+            or "figure" in lower
+            or "fig." in lower
+            # Clarifications like "I shared a document called X" usually refer to the
+            # user's previous question; combine to preserve intent.
+            or (
+                not has_explicit_question
+                and ("i shared" in lower or "i uploaded" in lower)
+                and ("called" in lower or "titled" in lower or "named" in lower)
+            )
+        )
+        if not looks_like_continuation:
+            return user_text_clean
+
+        prev = self._get_last_user_message_text(turn_ctx)
+        if not prev:
+            return user_text_clean
+
+        prev_clean = prev.strip()
+        if not prev_clean:
+            return user_text_clean
+
+        return f"{prev_clean} {user_text_clean}"
+
+    def _maybe_update_active_document_from_user_text(self, user_text: str) -> None:
+        """
+        Heuristically switch active document when the user names a doc/paper.
+        
+        This prevents "document bleed" (answering from a previously active doc)
+        when the user says things like: "I shared a paper called X".
+        """
+        text = (user_text or "").strip()
+        if not text:
+            return
+
+        lower = text.lower()
+        doc_cues = (
+            "document" in lower
+            or "paper" in lower
+            or "pdf" in lower
+            or "article" in lower
+            or "shared" in lower
+            or "uploaded" in lower
+            or "called" in lower
+            or "titled" in lower
+            or ("\"" in text or "'" in text)
+        )
+        if not doc_cues:
+            return
+
+        try:
+            retriever = self._get_retriever()
+            candidate_titles: list[str] = []
+
+            # 1) Quoted titles: "..."
+            import re
+            candidate_titles.extend(re.findall(r"\"([^\"]{3,})\"", text))
+            candidate_titles.extend(re.findall(r"'([^']{3,})'", text))
+
+            # 2) "called X" / "titled X" / "named X"
+            match = re.search(r"\b(?:called|titled|named)\s+(.+?)(?:[.?!]|$)", lower)
+            if match:
+                candidate_titles.append(match.group(1).strip())
+
+            # 3) Fallback: try to match against known titles using token overlap
+            documents = retriever.list_documents()
+
+            def _normalize_tokens(s: str) -> set[str]:
+                tokens = set(re.findall(r"[a-z0-9]+", s.lower()))
+                stop = {
+                    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+                    "is", "are", "was", "were", "be", "been", "this", "that", "it", "i",
+                    "you", "we", "they", "he", "she", "my", "your", "our",
+                    "document", "paper", "pdf", "article", "file", "shared", "uploaded",
+                    "called", "titled", "named",
+                }
+                return {t for t in tokens if t not in stop and len(t) >= 3}
+
+            # Try explicit candidates first
+            for cand in candidate_titles:
+                doc = retriever.find_document_by_title(cand)
+                if doc:
+                    self._set_active_document(doc["document_id"], doc["title"])
+                    return
+
+            # Token overlap against all titles
+            text_tokens = _normalize_tokens(text)
+            best_doc: dict | None = None
+            best_score = 0.0
+
+            for doc in documents:
+                title = str(doc.get("title", "") or "")
+                title_lower = title.lower()
+
+                if title_lower and title_lower in lower:
+                    best_doc = doc
+                    best_score = 1.0
+                    break
+
+                title_tokens = _normalize_tokens(title)
+                if not title_tokens or not text_tokens:
+                    continue
+
+                overlap = len(title_tokens & text_tokens)
+                score = overlap / max(len(title_tokens), 1)
+                if overlap >= 3 and score > best_score:
+                    best_score = score
+                    best_doc = doc
+
+            if best_doc and best_score >= 0.6:
+                self._set_active_document(
+                    str(best_doc.get("document_id", "")),
+                    str(best_doc.get("title", "")),
+                )
+                return
+
+            # If user says they uploaded/shared something but we couldn't extract a title,
+            # default to the most recently ingested document (newest-first list).
+            if ("shared" in lower or "uploaded" in lower) and documents:
+                newest = documents[0]
+                doc_id = str(newest.get("document_id", ""))
+                doc_title = str(newest.get("title", ""))
+                if doc_id and doc_title:
+                    self._set_active_document(doc_id, doc_title)
+
+        except Exception as e:
+            logger.warning(f"Failed to update active document from user text: {e}")
     
     def _get_indexer(self) -> DocumentIndexer:
         """
@@ -803,13 +984,12 @@ class TerminatorAssistant(Agent):
                     source_type = src.get("source_type", "document")
                     response_parts.append(f"\n- {title} ({source_type})")
                     
-                    # Set active document if we found a single primary source
-                    if len(result.sources) == 1 and not self._active_document_id:
+                    # Set active document if we found a single primary source.
+                    # This should switch even if a different doc was previously active.
+                    if len(result.sources) == 1:
                         doc_id = src.get("document_id")
                         if doc_id:
-                            self._active_document_id = doc_id
-                            self._active_document_title = title
-                            logger.info(f"[Tool] Active document set to: {title}")
+                            self._set_active_document(doc_id, title)
             
             logger.info(f"[Tool] Retrieved {len(result.documents)} documents")
             return "\n".join(response_parts)
@@ -846,6 +1026,23 @@ class TerminatorAssistant(Agent):
         """
         import re
         
+        # #region agent log
+        try:
+            import json
+            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A",
+                    "location": "backend/agent.py:ingest_url",
+                    "message": "Tool ingest_url called",
+                    "data": {"url": url},
+                    "timestamp": datetime.now().isoformat()
+                }) + "\n")
+        except Exception:
+            pass
+        # #endregion
+
         logger.info(f"[Tool] ingest_url called with: {url}")
         
         # Speak a pre-processing phrase to give audio feedback
@@ -872,6 +1069,23 @@ class TerminatorAssistant(Agent):
             is_youtube = any(re.match(pattern, url) for pattern in youtube_patterns)
             is_pdf = url_lower.endswith(".pdf") or "/pdf" in url_lower
             
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A",
+                        "location": "backend/agent.py:ingest_url:detection",
+                        "message": "URL type detection",
+                        "data": {"url": url, "is_youtube": is_youtube, "is_pdf": is_pdf},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            
             # Route to appropriate indexer method
             if is_youtube:
                 logger.info(f"[Tool] Detected YouTube URL, extracting transcript...")
@@ -886,9 +1100,29 @@ class TerminatorAssistant(Agent):
                 result = indexer.index_web(url)
                 content_type = "web article"
             
+            # #region agent log
+            try:
+                import json
+                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
+                    f.write(json.dumps({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "A",
+                        "location": "backend/agent.py:ingest_url:result",
+                        "message": "Indexing result",
+                        "data": {"success": result.get("success"), "error": result.get("error")},
+                        "timestamp": datetime.now().isoformat()
+                    }) + "\n")
+            except Exception:
+                pass
+            # #endregion
+
             if result.get("success"):
                 title = result.get("title", "Unknown")
                 chunk_count = result.get("chunk_count", 0)
+                doc_id = result.get("document_id")
+                if doc_id:
+                    self._set_active_document(doc_id, title)
                 logger.info(f"[Tool] Successfully ingested: {title} ({chunk_count} chunks)")
                 return (
                     f"Target acquired. I have processed the {content_type}: '{title}'. "
@@ -950,9 +1184,7 @@ class TerminatorAssistant(Agent):
                 return f"I couldn't find a document matching '{document_title}'. You haven't shared any documents with me yet."
             
             # Set active document for RAG context filtering
-            self._active_document_id = doc["document_id"]
-            self._active_document_title = doc["title"]
-            logger.info(f"[Tool] Active document set to: {doc['title']} ({doc['document_id']})")
+            self._set_active_document(doc["document_id"], doc["title"])
             
             # Get the first batch of chunks for reading
             result = retriever.retrieve_for_reading(
@@ -1631,6 +1863,12 @@ class TerminatorAssistant(Agent):
             return
         
         user_text_lower = user_text.lower()
+
+        # Improve retrieval for "continuation" utterances (e.g., "it's figure 37")
+        rag_query = self._build_rag_query(turn_ctx, user_text)
+
+        # If the user names a different document/paper, switch active document early
+        self._maybe_update_active_document_from_user_text(rag_query)
         
         # =================================================================
         # READING MODE INTERRUPTION HANDLING
@@ -1688,11 +1926,11 @@ class TerminatorAssistant(Agent):
         # STANDARD RAG RETRIEVAL
         # =================================================================
         # Check if we should attempt RAG retrieval for questions
-        if should_trigger_rag(user_text):
-            logger.info(f"RAG triggered for: {user_text[:50]}...")
+        if should_trigger_rag(rag_query):
+            logger.info(f"RAG triggered for: {rag_query[:50]}...")
             
             try:
-                rag_context = await self._retrieve_context(user_text)
+                rag_context = await self._retrieve_context(rag_query)
                 
                 if rag_context:
                     # Inject RAG context as a hidden assistant message
@@ -1735,7 +1973,13 @@ class TerminatorAssistant(Agent):
                     semantic_weight=0.4,  # Favor BM25 slightly for specific lookups
                 )
             else:
-                result = retriever.retrieve(query)
+                # Automatic retrieval should avoid injecting weakly-related context.
+                # Use a modest threshold on relevance to reduce "document bleed".
+                result = retriever.retrieve(
+                    query,
+                    k=6,
+                    score_threshold=0.3,
+                )
             
             if not result.documents:
                 logger.info("No relevant documents found (automatic)")
@@ -1969,3 +2213,4 @@ if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(entrypoint_fnc=entrypoint)
     )
+
