@@ -30,7 +30,9 @@ chromadb
 rank-bm25
 
 # Re-ranking (CrossEncoder for precise fact retrieval)
-torch  # Required by sentence-transformers for CrossEncoder models
+# CPU-only PyTorch (no CUDA - App Runner has no GPU, and this is ~200MB vs ~2GB)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers
 
 # Document Loaders
