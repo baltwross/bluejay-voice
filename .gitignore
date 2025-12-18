@@ -137,4 +137,7 @@ venv/bin/coloredlogs
 .taskmaster/tasks/tasks.json
 testsprite_tests/standard_prd.json
 testsprite_tests/*
-
+backend/tests/materials/*
+docs/rag_implementation_A.md
+docs/rag_implementation_B.md
+docs/rag_implementation_C.md

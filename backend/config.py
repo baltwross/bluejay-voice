@@ -134,6 +134,45 @@ class RAGConfig:
     retrieval_k: int = 4  # Number of documents to retrieve
     retrieval_score_threshold: float = 0.0  # Minimum similarity score
     
+    # Re-ranking settings (for precise fact retrieval)
+    # CrossEncoder re-ranker significantly improves precision for "specific fact" queries
+    use_reranker: bool = field(default_factory=lambda: os.getenv(
+        "RAG_USE_RERANKER", "true"
+    ).lower() in ("1", "true", "yes", "y", "on"))
+    reranker_model: str = field(default_factory=lambda: os.getenv(
+        "RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    ))  # Fast and effective; alternatives: "BAAI/bge-reranker-base", "BAAI/bge-reranker-large"
+    
+    # Hybrid retrieval + re-ranking pipeline settings
+    # Hybrid K (initial retrieval) → re-rank → top N → inject M into context
+    hybrid_k: int = 20  # Initial retrieval size for hybrid search
+    rerank_top_n: int = 8  # Keep top N after re-ranking
+    context_top_m: int = 4  # Inject top M into LLM context
+
+    # Adaptive context sizing
+    # Anchor queries (figure/table/section/reference) often need neighbor expansion;
+    # keeping too few chunks can truncate the relevant neighbor chunk.
+    anchor_context_top_m: int = 12
+    # On low-confidence retrieval, include more chunks so the LLM has more evidence
+    # (still far from "entire doc", but helps when the relevant chunk is slightly lower-ranked).
+    low_confidence_context_top_m: int = 20
+
+    # Whether to expand neighbors even when no explicit anchor was detected but
+    # confidence is low (only applies when a single document_id filter is in use).
+    expand_on_low_confidence: bool = True
+    
+    # Confidence thresholds
+    # auto_threshold: min relevance for automatic RAG injection in on_user_turn_completed
+    # tool_threshold: min relevance for explicit tool calls (lower = more permissive)
+    auto_injection_threshold: float = 0.35
+    tool_call_threshold: float = 0.25
+    low_confidence_threshold: float = 0.2  # Below this, admit uncertainty
+    
+    # Chunk expansion (neighbor windowing)
+    # When anchor detected or confidence low, expand context by ±window_size chunks
+    enable_chunk_expansion: bool = True
+    chunk_expansion_window: int = 1  # ±1 chunk on each side
+    
     # OpenAI API key (from environment)
     openai_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     

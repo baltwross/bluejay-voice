@@ -248,32 +248,32 @@ Resources:
           Value: !Sub '${ProjectName}-efs-ap'
 
   # ---------------------------------------------------------------------------
-  # ECR Repository
+  # ECR Repository (Commented out - already exists)
   # ---------------------------------------------------------------------------
-  ECRRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub '${ProjectName}-agent'
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              {
-                "rulePriority": 1,
-                "description": "Keep only last 10 images",
-                "selection": {
-                  "tagStatus": "any",
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 10
-                },
-                "action": {
-                  "type": "expire"
-                }
-              }
-            ]
-          }
+  # ECRRepository:
+  #   Type: AWS::ECR::Repository
+  #   Properties:
+  #     RepositoryName: !Sub '${ProjectName}-agent'
+  #     ImageScanningConfiguration:
+  #       ScanOnPush: true
+  #     LifecyclePolicy:
+  #       LifecyclePolicyText: |
+  #         {
+  #           "rules": [
+  #             {
+  #               "rulePriority": 1,
+  #               "description": "Keep only last 10 images",
+  #               "selection": {
+  #                 "tagStatus": "any",
+  #                 "countType": "imageCountMoreThan",
+  #                 "countNumber": 10
+  #               },
+  #               "action": {
+  #                 "type": "expire"
+  #               }
+  #             }
+  #           ]
+  #         }
 
   # ---------------------------------------------------------------------------
   # ECS Cluster
