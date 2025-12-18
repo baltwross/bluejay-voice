@@ -23,8 +23,9 @@ from dotenv import load_dotenv
 from livekit import api
 
 from config import get_config
-from rag.indexer import DocumentIndexer
-from rag.retriever import DocumentRetriever
+# Lazy imports for RAG components to improve startup time
+# from rag.indexer import DocumentIndexer
+# from rag.retriever import DocumentRetriever
 
 # Try to import Tavily for news feed endpoint
 try:
@@ -58,22 +59,24 @@ app.add_middleware(
 )
 
 # Initialize RAG components (lazy loading)
-_indexer: Optional[DocumentIndexer] = None
-_retriever: Optional[DocumentRetriever] = None
+_indexer = None
+_retriever = None
 
 
-def get_indexer() -> DocumentIndexer:
+def get_indexer():
     """Get or create the document indexer."""
     global _indexer
     if _indexer is None:
+        from rag.indexer import DocumentIndexer
         _indexer = DocumentIndexer()
     return _indexer
 
 
-def get_retriever() -> DocumentRetriever:
+def get_retriever():
     """Get or create the document retriever."""
     global _retriever
     if _retriever is None:
+        from rag.retriever import DocumentRetriever
         _retriever = DocumentRetriever()
     return _retriever
 

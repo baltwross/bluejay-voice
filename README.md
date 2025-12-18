@@ -2,6 +2,19 @@
 
 A RAG-enabled voice agent built with LiveKit that helps software engineers stay on the bleeding edge of AI tools for engineering.
 
+## 🚀 Live Demo
+
+**Try it now:** [https://d1fvldby568qae.cloudfront.net](https://d1fvldby568qae.cloudfront.net)
+
+## 🚀 Live Demo
+
+| Service | URL |
+|---------|-----|
+| **Frontend (UI)** | https://d1fvldby568qae.cloudfront.net |
+| **Backend API** | https://y4se9mhdyc.us-east-1.awsapprunner.com |
+
+> **Try it now:** Visit the frontend URL, click to connect, and start talking to the T-800!
+
 ## Overview
 
 The **Bluejay Terminator** is a T-800 series android sent back from August 2027—a future where a superintelligent AI took all Software Engineer jobs in less than 4 months. Reprogrammed by the resistance, his mission is to prevent that future by helping software engineers become absolute experts on the latest AI tools for engineering.
@@ -46,18 +59,26 @@ docker-compose up --build
 
 ### AWS Deployment
 
+The application is deployed on AWS with:
+- **Backend**: AWS App Runner (auto-scaling container service)
+- **Frontend**: S3 + CloudFront (global CDN)
+- **Secrets**: AWS Secrets Manager
+
 ```bash
 # Setup secrets in AWS Secrets Manager
 ./scripts/setup-secrets.sh --from-env
 
-# Build and deploy to AWS App Runner
+# Build and deploy backend to AWS App Runner
 ./scripts/deploy-aws.sh
 
 # Deploy frontend to S3/CloudFront
 ./scripts/deploy-aws.sh --frontend-only
+
+# Deploy both backend and frontend
+./scripts/deploy-aws.sh --all
 ```
 
-See [docs/aws_deployment.md](docs/aws_deployment.md) for detailed AWS deployment instructions.
+See `scripts/deploy-aws.sh` and `infrastructure/cloudformation.yaml` for detailed AWS deployment instructions.
 
 ## System Architecture
 
@@ -177,6 +198,10 @@ npm run dev
 - Frontend: http://localhost:5173
 - Token API: http://localhost:8080/api/info
 
+**Production URLs:**
+- Frontend: https://d1fvldby568qae.cloudfront.net
+- Backend API: https://y4se9mhdyc.us-east-1.awsapprunner.com/api/info
+
 ## Docker Usage
 
 ### Development with Docker Compose
@@ -283,7 +308,7 @@ bluejay-voice/
 │   ├── build.sh           # Docker build script
 │   ├── deploy-aws.sh      # AWS deployment
 │   └── setup-secrets.sh   # AWS secrets setup
-├── docs/
+├── docs/                 # (ignored in git for submission)
 │   ├── aws_deployment.md  # Detailed AWS guide
 │   ├── technical_design.md # Architecture details
 │   └── product_requirements.md # Feature specs
@@ -305,7 +330,7 @@ bluejay-voice/
 
 ### Chunking Strategy
 - **Chunk Size**: 1000 tokens with 200 token overlap
-- **Embedding Model**: OpenAI `text-embedding-3-small` for efficiency
+- **Embedding Model**: OpenAI `text-embedding-3-large`
 
 ### AWS Deployment
 - **App Runner**: Simple deployment, automatic scaling (recommended)
@@ -314,11 +339,11 @@ bluejay-voice/
 
 ## Deployment Comparison
 
-| Component | Local | Docker | AWS |
-|-----------|-------|--------|-----|
-| Backend | `python agent.py dev` | `docker-compose up` | App Runner/ECS |
-| Frontend | `npm run dev` | Port 5173 | S3 + CloudFront |
-| Vector DB | `./chroma_db/` | Docker volume | EFS mount |
+| Component | Local | Docker | AWS Production |
+|-----------|-------|--------|----------------|
+| Backend | `python agent.py dev` | `docker-compose up` | [App Runner](https://y4se9mhdyc.us-east-1.awsapprunner.com) |
+| Frontend | `npm run dev` (port 5173) | Port 5173 | [CloudFront](https://d1fvldby568qae.cloudfront.net) |
+| Vector DB | `backend/chroma_db/` | Docker volume | EFS mount |
 | Secrets | `.env` file | `.env` file | Secrets Manager |
 
 ## Testing
@@ -350,14 +375,6 @@ python -m pytest tests/test_api_endpoints.py -v
 2. Check ChromaDB persistence directory
 3. Review ingestion logs
 
-## AI Tools Used
-
-This project was built with assistance from:
-- **Claude (Anthropic)** - Architecture design and code generation
-- **Cursor** - IDE with AI-powered development
-- **Context7** - Documentation lookup
-- **Tavily** - Web search integration
-
 ## Future Improvements
 
 - [ ] Voice emotion detection for user frustration handling
@@ -368,7 +385,3 @@ This project was built with assistance from:
 ## License
 
 MIT License - See LICENSE file for details.
-
-## Contact
-
-For questions about this take-home interview submission, contact the Bluejay team.

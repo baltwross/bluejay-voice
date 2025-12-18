@@ -13,9 +13,9 @@ from datetime import datetime
 import uuid
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore[import-untyped]
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_chroma import Chroma  # type: ignore[import-untyped]
 
 from .config import RAGConfig, get_config
 from .loaders import DocumentLoaderFactory, LoaderResult
@@ -76,23 +76,6 @@ class DocumentIndexer:
         Returns:
             Dictionary with ingestion results
         """
-        # #region agent log
-        try:
-            import json
-            with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "A",
-                    "location": "backend/rag/indexer.py:ingest",
-                    "message": "ingest called",
-                    "data": {"source": source, "title": title},
-                    "timestamp": datetime.now().isoformat()
-                }) + "\n")
-        except Exception:
-            pass
-        # #endregion
-
         try:
             # Generate document ID if not provided
             if document_id is None:
@@ -124,22 +107,6 @@ class DocumentIndexer:
             return result
             
         except Exception as e:
-            # #region agent log
-            try:
-                import json
-                with open("/Users/rossbaltimore/bluejay-voice/.cursor/debug.log", "a") as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A",
-                        "location": "backend/rag/indexer.py:ingest:exception",
-                        "message": "Exception in ingest",
-                        "data": {"error": str(e)},
-                        "timestamp": datetime.now().isoformat()
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             logger.error(f"Error during ingestion: {e}")
             return {
                 "success": False,
