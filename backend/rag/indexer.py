@@ -13,9 +13,9 @@ from datetime import datetime
 import uuid
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore[import-untyped]
 from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from langchain_chroma import Chroma  # type: ignore[import-untyped]
 
 from .config import RAGConfig, get_config
 from .loaders import DocumentLoaderFactory, LoaderResult

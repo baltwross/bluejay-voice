@@ -57,7 +57,7 @@ docker-compose up --build
 ./scripts/deploy-aws.sh --frontend-only
 ```
 
-See [docs/aws_deployment.md](docs/aws_deployment.md) for detailed AWS deployment instructions.
+See `scripts/deploy-aws.sh` and `infrastructure/cloudformation.yaml` for AWS deployment instructions.
 
 ## System Architecture
 
@@ -283,7 +283,7 @@ bluejay-voice/
 │   ├── build.sh           # Docker build script
 │   ├── deploy-aws.sh      # AWS deployment
 │   └── setup-secrets.sh   # AWS secrets setup
-├── docs/
+├── docs/                 # (ignored in git for submission)
 │   ├── aws_deployment.md  # Detailed AWS guide
 │   ├── technical_design.md # Architecture details
 │   └── product_requirements.md # Feature specs
@@ -305,7 +305,7 @@ bluejay-voice/
 
 ### Chunking Strategy
 - **Chunk Size**: 1000 tokens with 200 token overlap
-- **Embedding Model**: OpenAI `text-embedding-3-small` for efficiency
+- **Embedding Model**: OpenAI `text-embedding-3-large`
 
 ### AWS Deployment
 - **App Runner**: Simple deployment, automatic scaling (recommended)
@@ -350,14 +350,6 @@ python -m pytest tests/test_api_endpoints.py -v
 2. Check ChromaDB persistence directory
 3. Review ingestion logs
 
-## AI Tools Used
-
-This project was built with assistance from:
-- **Claude (Anthropic)** - Architecture design and code generation
-- **Cursor** - IDE with AI-powered development
-- **Context7** - Documentation lookup
-- **Tavily** - Web search integration
-
 ## Future Improvements
 
 - [ ] Voice emotion detection for user frustration handling
@@ -365,30 +357,6 @@ This project was built with assistance from:
 - [ ] Persistent conversation history
 - [ ] Custom voice training
 
-## Submission (Bluejay Take-Home)
-
-Per the take-home instructions in `docs/Bluejay Take Home Interview.pdf` ([PDF](file:///Users/rossbaltimore/bluejay-voice/docs/Bluejay%20Take%20Home%20Interview.pdf)):
-
-1. **Push this repository to GitHub**
-   - Ensure `git status` is clean (no uncommitted changes).
-   - Confirm no secrets are committed (keep `.env` files out of git).
-
-2. **Record a short demo video**
-   - Show the **Start Call → live transcript → End Call** flow.
-   - Show the required **tool call** in-narrative (e.g., “AI news feed”).
-   - Show **RAG over a large PDF**: upload/ingest, then ask a specific fact question.
-   - Optional (bonus): show the agent running on **AWS**.
-
-3. **Share the repo**
-   - Share the GitHub repo with **farazs27@gmail.com**.
-
-4. **Email the demo**
-   - Email the video + repo link to **rohan@getbluejay.ai** and **faraz@getbluejay.ai**.
-
 ## License
 
 MIT License - See LICENSE file for details.
-
-## Contact
-
-For questions about this take-home interview submission, contact the Bluejay team.

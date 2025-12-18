@@ -29,10 +29,6 @@ backend/chroma_db/*
 !backend/chroma_db/.gitkeep
 .env
 
-# Transcripts (for debugging, keep .gitkeep)
-transcripts/*
-!transcripts/.gitkeep
-
 # Reading session state (persisted for resume across restarts)
 backend/.reading_state.json
 
@@ -136,10 +132,15 @@ tmp/
 temp/
 venv/bin/coloredlogs
 
-.taskmaster/tasks/tasks.json
-testsprite_tests/standard_prd.json
-testsprite_tests/*
-backend/tests/materials/*
-docs/rag_implementation_A.md
-docs/rag_implementation_B.md
-docs/rag_implementation_C.md
+# Cursor / local tooling
+.cursorrules
+.taskmaster/
+
+# Local docs (keep in your local workspace, don't commit)
+docs/
+
+# Local transcripts (keep local only)
+transcripts/
+
+# Local test materials / large PDFs
+backend/tests/materials/
