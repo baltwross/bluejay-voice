@@ -241,9 +241,9 @@ The frontend is built with React 18, Vite, and Tailwind CSS with a Terminator HU
 *   **Run Command:** `python agent.py dev` connects to LiveKit Cloud from localhost.
 *   **Vector DB:** ChromaDB persisted to `./chroma_db` directory.
 
-### Production Deployment (AWS - REQUIRED)
+### Production Deployment (AWS - Bonus)
 
-**⚠️ AWS deployment is REQUIRED for this take-home interview (bonus points).**
+**AWS deployment is optional (bonus points).**
 
 #### Backend Agent
 *   **Container:** Docker image pushed to AWS ECR

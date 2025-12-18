@@ -318,7 +318,7 @@ bluejay-voice/
 |-----------|-------|--------|-----|
 | Backend | `python agent.py dev` | `docker-compose up` | App Runner/ECS |
 | Frontend | `npm run dev` | Port 5173 | S3 + CloudFront |
-| Vector DB | `./chroma_db/` | Docker volume | EFS mount |
+| Vector DB | `backend/chroma_db/` *(generated locally; gitignored)* | Docker volume | EFS mount |
 | Secrets | `.env` file | `.env` file | Secrets Manager |
 
 ## Testing
