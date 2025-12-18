@@ -24,7 +24,9 @@ frontend/yarn-error.log*
 # --- Project Data & Secrets ---
 # Ignore actual data but keep the folder structure if needed (add .gitkeep in them if empty)
 data/documents/
-chroma_db/
+# Chroma vector store (generated locally; do not commit embeddings/index files)
+backend/chroma_db/*
+!backend/chroma_db/.gitkeep
 .env
 
 # Transcripts (for debugging, keep .gitkeep)
