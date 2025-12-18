@@ -318,24 +318,139 @@ bluejay-voice/
 
 ## Design Decisions & Trade-offs
 
-### Voice Pipeline
-- **Deepgram STT**: Lower latency (~300ms) vs Whisper
-- **ElevenLabs TTS**: Custom Arnold voice (ID: `8DGMp3sPQNZOuCfSIxxE`)
-- **Silero VAD**: Enables natural interruption during agent speech
+This section details the architectural decisions, assumptions, and limitations of the Bluejay Terminator voice agent system.
 
-### RAG Framework
-- **LangChain**: Robust ecosystem, flexible chains, extensive integrations
-- **ChromaDB**: Local, file-based for development; EFS for production
-- **Hybrid Search**: Combines semantic embeddings with BM25 keyword search
+### Trade-offs & Limitations
 
-### Chunking Strategy
-- **Chunk Size**: 1000 tokens with 200 token overlap
-- **Embedding Model**: OpenAI `text-embedding-3-large`
+#### Voice Pipeline Trade-offs
+- **STT Choice (Deepgram vs Whisper)**: Chose Deepgram `nova-3` for lower latency (~300ms) and real-time streaming capabilities. Trade-off: Requires API key and incurs per-minute costs vs. free local Whisper, but latency is critical for natural conversation flow.
+- **TTS Choice (ElevenLabs vs OpenAI)**: Selected ElevenLabs for custom Arnold-style voice synthesis. Trade-off: Higher cost per character vs. OpenAI TTS, but provides superior voice quality and character consistency.
+- **VAD (Silero)**: Uses Silero VAD for voice activity detection to enable natural interruptions. Trade-off: Adds ~50-100ms processing overhead, but essential for reading mode where users can interrupt mid-sentence.
+- **Preemptive Generation**: Enabled preemptive LLM response generation to reduce perceived latency. Trade-off: May generate responses for incomplete user turns, but significantly improves conversation responsiveness.
 
-### AWS Deployment
-- **App Runner**: Simple deployment, automatic scaling (recommended)
-- **ECS Fargate**: More control, EFS support for persistence
-- **Secrets Manager**: Secure API key storage
+#### RAG System Limitations
+- **Single Vector Store**: All users share the same ChromaDB collection. **Limitation**: No multi-user isolation; documents uploaded by one user are visible to all users. For production, would need per-user collections or document-level access control.
+- **In-Memory News Cache**: News search results cached in memory with 5-minute TTL. **Limitation**: Cache is lost on agent restart; no persistent cache across deployments.
+- **Reading State Persistence**: Reading position stored in local JSON file. **Limitation**: Not suitable for multi-instance deployments; should use Redis or database for shared state.
+- **Re-ranking Dependency**: CrossEncoder re-ranking significantly improves precision for "specific fact" queries but requires `sentence-transformers` package. **Limitation**: Optional dependency adds ~500MB to Docker image; system degrades gracefully without it.
+- **Chunk Boundary Issues**: Fixed chunk size (1000 tokens) may split answers across chunks. **Mitigation**: Hybrid search with neighbor expansion (±1 chunk) helps, but complex answers spanning multiple chunks may require multiple retrieval passes.
+
+#### Hosting & Infrastructure Limitations
+- **EFS for ChromaDB**: Uses AWS EFS for persistent vector store in production. **Limitation**: EFS has higher latency than local disk; first query after cold start may be slower. Acceptable trade-off for persistence across container restarts.
+- **No Database**: Reading state and session data stored in files, not a database. **Limitation**: Not suitable for horizontal scaling; would need Redis/DynamoDB for multi-instance deployments.
+- **Secrets Management**: AWS Secrets Manager for API keys. **Assumption**: Secrets are pre-configured; deployment script doesn't create secrets automatically.
+
+### Hosting Assumptions
+
+#### Development Environment
+- **Local Development**: Assumes developers run backend locally with Python 3.9+, ChromaDB stored in `backend/chroma_db/` directory.
+- **Docker Development**: Assumes Docker Compose for local testing; ChromaDB persisted in Docker volume.
+- **LiveKit Cloud**: Assumes LiveKit Cloud account with project URL, API key, and secret configured.
+
+#### Production Deployment (AWS)
+- **Backend Hosting**: Assumes deployment to either:
+  - **AWS App Runner** (recommended): Auto-scaling, managed service, simpler setup. Assumes ECR repository exists and Secrets Manager secret is pre-configured.
+  - **ECS Fargate**: More control, supports EFS mounts. Assumes CloudFormation stack deployment with VPC, EFS, and IAM roles.
+- **Frontend Hosting**: Assumes S3 bucket for static assets and CloudFront distribution for CDN. Bucket must be configured for public read access.
+- **Vector Store Persistence**: 
+  - **App Runner**: Assumes ChromaDB stored in container filesystem (ephemeral) OR external EFS mount (requires custom setup).
+  - **ECS Fargate**: Assumes EFS file system mounted at `/app/chroma_db` for persistence across container restarts.
+- **Secrets**: Assumes AWS Secrets Manager secret named `bluejay-terminator-secrets` with keys: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENAI_API_KEY`, `DEEPGRAM_API_KEY`, `ELEVEN_API_KEY`, `TAVILY_API_KEY`.
+- **Network**: Assumes backend can make outbound HTTPS connections to LiveKit Cloud, OpenAI, Deepgram, ElevenLabs, and Tavily APIs.
+
+### RAG Assumptions
+
+#### Vector Database Choice: ChromaDB
+- **Rationale**: ChromaDB chosen for simplicity, local-first architecture, and LangChain integration. File-based persistence works well for single-instance deployments.
+- **Alternative Considered**: Pinecone (managed) or Weaviate (self-hosted) for better scalability, but added complexity and cost.
+- **Assumption**: Single ChromaDB collection (`bluejay_knowledge_base`) shared across all documents. For multi-tenant, would need per-user collections.
+
+#### Chunking Strategy
+- **Chunk Size**: 1000 tokens (approximately 750-1000 words) with 200 token overlap.
+  - **Rationale**: Balances context completeness (larger chunks) with retrieval precision (smaller chunks). 1000 tokens captures most paragraph-level concepts without excessive noise.
+  - **Overlap**: 200 tokens ensures continuity across chunk boundaries, critical for answers spanning multiple sections.
+- **Splitter**: `RecursiveCharacterTextSplitter` with separators `["\n\n", "\n", ". ", " ", ""]`.
+  - **Rationale**: Preserves paragraph structure (prefers double newlines) while ensuring chunks don't exceed size limit.
+- **Anchor Injection**: Structural anchors (Figure 37, Table 2.3, Section 4.1) extracted and appended to chunks for BM25 keyword boost.
+  - **Rationale**: Enables precise retrieval of specific references mentioned in queries like "What does Figure 37 show?"
+
+#### Embedding Model
+- **Model**: OpenAI `text-embedding-3-large` (3072 dimensions).
+  - **Rationale**: High-quality embeddings with strong semantic understanding. Alternative: `text-embedding-3-small` (1536 dims) for lower cost, but `-large` provides better accuracy for technical documents.
+- **Assumption**: OpenAI API key available and embedding costs are acceptable for the use case.
+
+#### Retrieval Strategy
+- **Hybrid Search**: Combines semantic similarity (embedding-based) with BM25 keyword search.
+  - **Semantic Weight**: 0.4-0.5 (default 0.5) for general queries; 0.4 for document-specific queries to favor keyword matching.
+  - **Rationale**: Semantic search handles conceptual queries ("How does RAG work?"), while BM25 excels at specific references ("reference 15", "section 3.2").
+- **Re-ranking**: CrossEncoder `cross-encoder/ms-marco-MiniLM-L-6-v2` for precision.
+  - **Rationale**: Re-ranker scores query-document pairs more accurately than embedding similarity alone. Critical for "specific fact in specific chapter" style questions.
+  - **Pipeline**: Retrieve top 20 candidates → Re-rank to top 8 → Inject top 4 into LLM context.
+- **Confidence Thresholds**:
+  - **Automatic RAG injection**: 0.35 minimum relevance (avoids injecting weakly-related context).
+  - **Tool calls**: 0.25 minimum (more permissive for explicit user requests).
+  - **Low confidence warning**: Below 0.2, agent admits uncertainty.
+
+#### Framework Choice: LangChain
+- **Rationale**: 
+  - Robust ecosystem with extensive integrations (ChromaDB, OpenAI, document loaders).
+  - Flexible chains for complex retrieval pipelines.
+  - Active community and documentation.
+- **Alternative Considered**: LlamaIndex (strong RAG focus) or direct ChromaDB API (more control, less abstraction). Chose LangChain for balance of features and maintainability.
+
+### LiveKit Agent Design
+
+#### Architecture Overview
+The agent follows LiveKit's recommended architecture:
+1. **AgentSession**: Orchestrates STT → LLM → TTS pipeline with VAD for turn-taking.
+2. **TerminatorAssistant**: Extends `Agent` class with RAG integration and tool calls.
+3. **RAG Integration**: Context injected via `on_user_turn_completed` hook before LLM processes user message.
+
+#### STT Configuration (Deepgram)
+- **Model**: `nova-3` (latest, optimized for accuracy and latency).
+- **Language**: `en-US` (assumes English-only conversations).
+- **Interim Results**: Enabled for real-time transcript display.
+- **Endpointing**: 25ms silence threshold for quick turn detection.
+- **No Delay**: `no_delay=True` for minimal latency.
+
+#### LLM Configuration (OpenAI)
+- **Model**: `gpt-4o-mini` (fast, cost-effective, sufficient for voice conversations).
+  - **Alternative Considered**: `gpt-4o` for better reasoning, but `-mini` provides 10x lower cost with acceptable quality for voice.
+- **Temperature**: 0.2 (low for consistent, deterministic responses).
+- **System Prompt**: T-800 Terminator personality defined in `prompts.py` with clear instructions for tool usage and RAG context handling.
+
+#### TTS Configuration (ElevenLabs)
+- **Voice ID**: `8DGMp3sPQNZOuCfSIxxE` (custom Arnold-style voice).
+- **Model**: `eleven_multilingual_v2` (supports multiple languages, though primarily English).
+- **Streaming**: Optimized for low latency with `optimize_streaming_latency=4`.
+- **Voice Switching**: Supports dynamic voice mode switching (Terminator/Inspire/Fate) via tool calls.
+
+#### VAD Configuration (Silero)
+- **Min Speech Duration**: 0.05s (quick interruption detection).
+- **Min Silence Duration**: 0.2s (low-latency mode) or 0.5s (standard mode).
+- **Turn Detection**: `turn_detection="vad"` (relies on VAD, not EOU model, for lower latency).
+- **Interruption Handling**: `min_interruption_duration=0.25s` for quick user interruptions during agent speech.
+
+#### Performance Optimizations
+- **Preemptive Generation**: Starts generating LLM response before user turn fully committed (reduces perceived latency by ~500ms-1s).
+- **Endpointing Delays**: `min_endpointing_delay=0.1s`, `max_endpointing_delay=0.6s` (low-latency mode) for faster response initiation.
+- **Noise Cancellation**: Disabled by default (`ENABLE_NOISE_CANCELLATION=false`) to avoid processing delay; can be enabled for noisy environments.
+
+#### RAG Integration Pattern
+- **Automatic Injection**: `on_user_turn_completed` hook triggers RAG retrieval for document-related queries (keyword-based heuristic).
+- **Tool-Based Retrieval**: LLM can explicitly call `search_documents` tool for precise control.
+- **Active Document Context**: Tracks "active document" from recent searches/reads to filter RAG to relevant document.
+- **Hybrid Search for Active Docs**: When active document is set, uses hybrid search (semantic + BM25) with higher k (12 vs 6) for better recall on specific references.
+
+#### Tool Call Architecture
+- **Function Tools**: LLM decides when to invoke tools (`@function_tool` decorator).
+- **Available Tools**:
+  - `search_documents`: RAG retrieval from knowledge base.
+  - `ingest_url`: Process YouTube/web/PDF URLs.
+  - `read_document`: Read documents aloud with position tracking.
+  - `search_ai_news`: Tavily integration for latest AI news.
+  - `switch_voice`: Dynamic voice mode switching.
+- **Tool Error Handling**: Tools raise `ToolError` with user-friendly messages; LLM handles gracefully.
 
 ## Deployment Comparison
 
