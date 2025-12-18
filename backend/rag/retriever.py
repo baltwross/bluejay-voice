@@ -28,7 +28,7 @@ from rank_bm25 import BM25Okapi  # type: ignore[import-untyped]
 
 # CrossEncoder for re-ranking (optional, improves precision significantly)
 try:
-    from sentence_transformers import CrossEncoder  # type: ignore
+    from sentence_transformers import CrossEncoder
     RERANKER_AVAILABLE = True
 except ImportError:
     RERANKER_AVAILABLE = False
@@ -356,10 +356,8 @@ class DocumentRetriever:
             logger.info(f"Re-ranked to top {len(documents)} documents")
         else:
             # Without re-ranking, use fusion scores
-            # Keep the full candidate set (up to initial_k) so we can expand neighbors
-            # and apply adaptive context sizing later without prematurely truncating.
-            documents = candidate_documents
-            scores = [score for _, score in sorted_docs]
+            documents = candidate_documents[:self.config.context_top_m]
+            scores = [score for _, score in sorted_docs[:self.config.context_top_m]]
         
         # =================================================================
         # CONFIDENCE GATING: Check if results are reliable
@@ -371,59 +369,29 @@ class DocumentRetriever:
                 f"Results may not contain the answer."
             )
             # Still return results, but agent should use them cautiously
-
-        # =================================================================
-        # ADAPTIVE CONTEXT SIZING: anchor queries + low-confidence fallback
-        # =================================================================
-        effective_context_top_m = self.config.context_top_m
-        if anchors:
-            effective_context_top_m = max(
-                effective_context_top_m,
-                getattr(self.config, "anchor_context_top_m", self.config.context_top_m),
-            )
-        if confidence < self.config.low_confidence_threshold:
-            effective_context_top_m = max(
-                effective_context_top_m,
-                getattr(self.config, "low_confidence_context_top_m", self.config.context_top_m),
-            )
         
         # =================================================================
         # NEIGHBOR EXPANSION: Expand context when anchors detected
         # =================================================================
-        should_expand = bool(document_id) and self.config.enable_chunk_expansion and bool(documents)
-        if should_expand:
-            should_expand = bool(expand_neighbors)
-            if (not should_expand) and (confidence < self.config.low_confidence_threshold):
-                should_expand = bool(getattr(self.config, "expand_on_low_confidence", True))
-
-        if should_expand and document_id:
-            # Preserve original ranking order while expanding neighbors.
-            base_docs = documents
-            base_scores = scores
+        if expand_neighbors and document_id:
             documents = self._expand_with_neighbors(
-                base_docs,
+                documents,
                 document_id,
                 window_size=self.config.chunk_expansion_window,
             )
-
-            # Re-score expanded documents: keep original score for retrieved chunks,
-            # assign a modest default score to neighbor-only chunks.
-            score_by_key: Dict[str, float] = {}
-            for i, d in enumerate(base_docs[:len(base_scores)]):
-                score_by_key[self._doc_key(d)] = base_scores[i]
-            scores = [score_by_key.get(self._doc_key(d), 0.3) for d in documents]
+            # Re-score expanded documents (they inherit parent score for simplicity)
+            if len(documents) > len(scores):
+                scores = scores + [0.3] * (len(documents) - len(scores))
         
-        # Take final top M for context injection (adaptive)
-        documents = documents[:effective_context_top_m]
-        scores = scores[:effective_context_top_m]
+        # Take final top M for context injection
+        documents = documents[:self.config.context_top_m]
+        scores = scores[:self.config.context_top_m]
         
         # Apply score threshold filter
         # NOTE: When re-ranking is used, scores are CrossEncoder scores (can be negative)
         # When not re-ranking, scores are fusion scores (0-1 range)
         # Skip threshold filtering if re-ranking was used (trust the ranking order instead)
-        # For anchor queries with neighbor expansion, keep neighbors even if their
-        # scores are weaker; truncation is controlled by effective_context_top_m.
-        if (use_reranking and self._reranker) or bool(anchors):
+        if use_reranking and self._reranker:
             # Re-ranker already ordered by relevance - keep all top M
             filtered_docs = documents
             filtered_scores = scores
@@ -748,15 +716,11 @@ class DocumentRetriever:
         try:
             collection = self.vector_store._collection
             
-            # Build an ordered list of "centers" (retrieved chunks) in the same order
-            # as the incoming `documents` list. We will preserve that order while
-            # expanding neighbors.
-            centers: List[int] = []
+            # Get unique chunk indices from retrieved docs
             chunk_indices = set()
             for doc in documents:
                 if doc.metadata.get("document_id") == document_id:
-                    idx = int(doc.metadata.get("chunk_index", 0))
-                    centers.append(idx)
+                    idx = doc.metadata.get("chunk_index", 0)
                     chunk_indices.add(idx)
                     # Add neighbors
                     for offset in range(-window_size, window_size + 1):
@@ -783,31 +747,12 @@ class DocumentRetriever:
             if not results or not results.get("documents"):
                 return documents
             
-            # Convert to Document objects and index by chunk_index
-            by_index: Dict[int, Document] = {}
+            # Convert to Document objects and sort by chunk_index
+            expanded_docs = []
             for text, meta in zip(results["documents"], results["metadatas"]):
-                try:
-                    idx = int(meta.get("chunk_index", 0)) if meta else 0
-                except (TypeError, ValueError):
-                    idx = 0
-                by_index[idx] = Document(page_content=text, metadata=meta)
-
-            # Preserve importance: for each center chunk (in rank order),
-            # emit the neighbor window around it in chunk_index order.
-            expanded_docs: List[Document] = []
-            seen: set[int] = set()
-            for center in centers:
-                for idx in range(center - window_size, center + window_size + 1):
-                    if idx < 0 or idx in seen:
-                        continue
-                    doc = by_index.get(idx)
-                    if doc is not None:
-                        expanded_docs.append(doc)
-                        seen.add(idx)
-
-            # Fallback: if we couldn't build an ordered list, return all in index order.
-            if not expanded_docs:
-                expanded_docs = [by_index[i] for i in sorted(by_index.keys())]
+                expanded_docs.append(Document(page_content=text, metadata=meta))
+            
+            expanded_docs.sort(key=lambda d: d.metadata.get("chunk_index", 0))
             
             logger.debug(
                 f"Expanded {len(documents)} docs to {len(expanded_docs)} "

@@ -148,18 +148,6 @@ class RAGConfig:
     hybrid_k: int = 20  # Initial retrieval size for hybrid search
     rerank_top_n: int = 8  # Keep top N after re-ranking
     context_top_m: int = 4  # Inject top M into LLM context
-
-    # Adaptive context sizing
-    # Anchor queries (figure/table/section/reference) often need neighbor expansion;
-    # keeping too few chunks can truncate the relevant neighbor chunk.
-    anchor_context_top_m: int = 12
-    # On low-confidence retrieval, include more chunks so the LLM has more evidence
-    # (still far from "entire doc", but helps when the relevant chunk is slightly lower-ranked).
-    low_confidence_context_top_m: int = 20
-
-    # Whether to expand neighbors even when no explicit anchor was detected but
-    # confidence is low (only applies when a single document_id filter is in use).
-    expand_on_low_confidence: bool = True
     
     # Confidence thresholds
     # auto_threshold: min relevance for automatic RAG injection in on_user_turn_completed

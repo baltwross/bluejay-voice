@@ -30,9 +30,11 @@ chromadb
 rank-bm25
 
 # Re-ranking (CrossEncoder for precise fact retrieval)
+torch  # Required by sentence-transformers for CrossEncoder models
 sentence-transformers
 
 # Document Loaders
+pypdf  # Required by langchain's PyPDFLoader
 pymupdf
 youtube-transcript-api
 pytube
