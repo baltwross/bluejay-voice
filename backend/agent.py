@@ -1987,10 +1987,6 @@ def create_agent_session(
     tts = elevenlabs.TTS(
         voice_id=voice_config["voice_id"],
         model=voice_config["model"],
-        # Prefer low-latency models for conversational responsiveness.
-        streaming_latency=config.elevenlabs.optimize_streaming_latency,
-        enable_logging=config.elevenlabs.enable_logging,
-        sync_alignment=config.elevenlabs.sync_alignment,
     )
     
     # Configure Silero VAD for interruptibility
