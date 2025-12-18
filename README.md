@@ -365,26 +365,6 @@ This project was built with assistance from:
 - [ ] Persistent conversation history
 - [ ] Custom voice training
 
-## Submission (Bluejay Take-Home)
-
-Per the take-home instructions in `docs/Bluejay Take Home Interview.pdf` ([PDF](file:///Users/rossbaltimore/bluejay-voice/docs/Bluejay%20Take%20Home%20Interview.pdf)):
-
-1. **Push this repository to GitHub**
-   - Ensure `git status` is clean (no uncommitted changes).
-   - Confirm no secrets are committed (keep `.env` files out of git).
-
-2. **Record a short demo video**
-   - Show the **Start Call → live transcript → End Call** flow.
-   - Show the required **tool call** in-narrative (e.g., “AI news feed”).
-   - Show **RAG over a large PDF**: upload/ingest, then ask a specific fact question.
-   - Optional (bonus): show the agent running on **AWS**.
-
-3. **Share the repo**
-   - Share the GitHub repo with **farazs27@gmail.com**.
-
-4. **Email the demo**
-   - Email the video + repo link to **rohan@getbluejay.ai** and **faraz@getbluejay.ai**.
-
 ## License
 
 MIT License - See LICENSE file for details.
